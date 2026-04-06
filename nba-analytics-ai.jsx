@@ -501,12 +501,37 @@ vs .500+: ${t1.abbr} ${t1.vsAbove500} | ${t2.abbr} ${t2.vsAbove500}
   query(userMsg, games, parlayState) {
     const q = userMsg.toLowerCase();
 
-    // Team comparison query — "compare Lakers vs Celtics"
+    // Team comparison / matchup query — "compare Lakers vs Celtics" or "knicks vs hawks"
     const compareMatch = q.match(/compare\s+(\w+)\s+(?:vs\.?|and|to|with)\s+(\w+)/)
-      || q.match(/(\w+)\s+vs\.?\s+(\w+)\s+(?:comparison|compare|head.to.head)/);
+      || q.match(/(\w+)\s+vs\.?\s+(\w+)\s+(?:comparison|compare|head.to.head)/)
+      || q.match(/(\w+)\s+(?:vs\.?|against|@)\s+(\w+)/);
     if (compareMatch) {
+      // First check if there's a scheduled game
+      const game = this.findGame(q, games);
+      if (game) return this.formatGameAnalysis(game);
+      // Otherwise do an ad-hoc comparison/matchup
       const comp = DataAgent.compareTeams(compareMatch[1], compareMatch[2]);
-      if (comp) return this.formatComparison(comp.t1, comp.t2);
+      if (comp) {
+        // Generate ad-hoc win probability
+        const t1Data = DataAgent.findTeam(compareMatch[1]);
+        const t2Data = DataAgent.findTeam(compareMatch[2]);
+        if (t1Data && t2Data) {
+          const homeProb = AnalyticsAgent.calcProb(t1Data, t2Data);
+          const factors = AnalyticsAgent.getFactorBreakdown(t1Data, t2Data);
+          const t1Trends = TrendsAgent.getTeamTrends(t1Data);
+          const t2Trends = TrendsAgent.getTeamTrends(t2Data);
+          const allTrends = [...t1Trends.map(t => `${t1Data.abbr}: ${t.text}`), ...t2Trends.map(t => `${t2Data.abbr}: ${t.text}`)];
+          return `${this.formatComparison(comp.t1, comp.t2)}
+
+**Win Probability** (if ${t1Data.abbr} hosts):
+${t1Data.abbr}: ${Math.round(homeProb * 100)}% | ${t2Data.abbr}: ${Math.round((1 - homeProb) * 100)}%
+
+**Factor Breakdown:**
+${factors.map(f => `  ${f.label}: ${t1Data.abbr} ${f.home} vs ${t2Data.abbr} ${f.away} → Edge: ${f.edge}`).join("\n")}
+${allTrends.length > 0 ? `\n**Active Trends:**\n${allTrends.slice(0, 6).map(t => `  ${t}`).join("\n")}` : ""}`;
+        }
+        return this.formatComparison(comp.t1, comp.t2);
+      }
       return `Could not find one or both teams. Try full city name or abbreviation (e.g. "compare LAL vs BOS").`;
     }
 
