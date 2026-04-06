@@ -380,6 +380,323 @@ const TrendsAgent = {
   },
 };
 
+// QUERY UNDERSTANDING AGENT — NLP intent classification + confidence scoring
+const QueryUnderstandingAgent = {
+  name: "QueryUnderstandingAgent",
+
+  // Intent patterns with confidence weights
+  intentPatterns: {
+    player_stats: {
+      patterns: [
+        /(?:stats?|about|points?|scoring|how is|how's|tell me about|look up)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z\-]+)+)/i,
+        /([A-Z][a-z]+(?:\s+[A-Z][a-z\-]+)+)\s+stats?/i,
+        /player\s+stats?/i,
+      ],
+      keywords: ["stats", "ppg", "rpg", "apg", "shooting", "averages", "player", "scoring"],
+      baseConfidence: 0.85,
+    },
+    team_stats: {
+      patterns: [
+        /(?:team\s+)?stats?\s+(?:for\s+)?(\w+)/i,
+        /(\w+)\s+team\s+stats?/i,
+        /how (?:is|are) (?:the\s+)?(\w+)/i,
+      ],
+      keywords: ["team stats", "record", "roster", "team", "franchise"],
+      baseConfidence: 0.8,
+    },
+    game_matchup: {
+      patterns: [
+        /(\w+)\s+(?:vs\.?|@|against|and)\s+(\w+)/i,
+        /(\w+)\s+game/i,
+      ],
+      keywords: ["game", "matchup", "playing", "tonight", "vs"],
+      baseConfidence: 0.85,
+    },
+    comparison: {
+      patterns: [
+        /compare\s+(\w+)\s+(?:vs\.?|and|to|with)\s+(\w+)/i,
+        /(\w+)\s+(?:vs\.?|or)\s+(\w+)\s+(?:who|which|better)/i,
+        /who.?s?\s+better/i,
+      ],
+      keywords: ["compare", "better", "head to head", "comparison", "versus"],
+      baseConfidence: 0.85,
+    },
+    parlay: {
+      patterns: [
+        /(\d+)\s*leg\s*parlay/i,
+        /(?:build|make|give|suggest|create).*parlay/i,
+        /parlay.*(\d+)\s*%/i,
+        /parlay/i,
+      ],
+      keywords: ["parlay", "leg", "combo", "multi", "accumulator"],
+      baseConfidence: 0.9,
+    },
+    predictions: {
+      patterns: [
+        /who\s+(?:win|wins|gonna win|going to win)/i,
+        /predict/i,
+        /winner/i,
+      ],
+      keywords: ["predict", "winner", "who wins", "pick", "forecast"],
+      baseConfidence: 0.85,
+    },
+    best_bets: {
+      patterns: [
+        /best\s+(?:bet|pick|lock)/i,
+        /safest/i,
+        /recommend/i,
+      ],
+      keywords: ["best bet", "lock", "safest", "recommend", "should i bet"],
+      baseConfidence: 0.85,
+    },
+    odds: {
+      patterns: [
+        /(?:odds|moneyline|spread|line)/i,
+      ],
+      keywords: ["odds", "moneyline", "spread", "line", "vig", "juice", "money line"],
+      baseConfidence: 0.85,
+    },
+    over_under: {
+      patterns: [
+        /(?:over|under|total|o\/u)/i,
+      ],
+      keywords: ["over", "under", "total", "o/u", "points total"],
+      baseConfidence: 0.8,
+    },
+    trends: {
+      patterns: [
+        /trend/i,
+        /streak/i,
+        /(?:hot|cold|heating|cooling)\s+(?:team|streak)/i,
+      ],
+      keywords: ["trend", "streak", "hot", "cold", "form", "momentum"],
+      baseConfidence: 0.85,
+    },
+    rankings: {
+      patterns: [
+        /(?:rank|standing|best team|top team|power rank)/i,
+      ],
+      keywords: ["ranking", "standings", "best team", "top", "power", "leaderboard"],
+      baseConfidence: 0.85,
+    },
+    upsets: {
+      patterns: [
+        /(?:upset|underdog|long shot|sleeper)/i,
+      ],
+      keywords: ["upset", "underdog", "longshot", "sleeper", "value pick"],
+      baseConfidence: 0.85,
+    },
+    schedule: {
+      patterns: [
+        /(?:all games|schedule|tonight|today|upcoming|games?\s+(?:on|for|playing))/i,
+        /what games/i,
+        /(?:april|march|feb|jan|may|tomorrow|yesterday)\s*\d*/i,
+        /how many game/i,
+      ],
+      keywords: ["schedule", "tonight", "today", "games", "playing", "april", "tomorrow"],
+      baseConfidence: 0.8,
+    },
+    defense_offense: {
+      patterns: [
+        /(?:best|worst)\s+(?:defense|offense)/i,
+        /(?:most|least)\s+points/i,
+      ],
+      keywords: ["defense", "offense", "defensive", "offensive"],
+      baseConfidence: 0.85,
+    },
+    closest_games: {
+      patterns: [
+        /(?:closest|tightest|most competitive|coin flip|blowout|biggest favorite|easiest|lopsided)/i,
+      ],
+      keywords: ["closest", "tightest", "competitive", "blowout", "favorite"],
+      baseConfidence: 0.85,
+    },
+    general_nba: {
+      patterns: [
+        /(?:nba|basketball|playoff|champion|mvp|draft|trade|injury|injured|roster|contract|free agent|rookie|all.star)/i,
+      ],
+      keywords: ["nba", "basketball", "playoff", "champion", "mvp", "draft", "trade", "injury", "news", "update", "report"],
+      baseConfidence: 0.5,  // Lower — often needs web search
+    },
+  },
+
+  classify(query) {
+    const q = query.toLowerCase().trim();
+    const results = [];
+
+    for (const [intent, config] of Object.entries(this.intentPatterns)) {
+      let confidence = 0;
+
+      // Pattern matching (strongest signal)
+      for (const pattern of config.patterns) {
+        if (pattern.test(query)) {
+          confidence = Math.max(confidence, config.baseConfidence);
+          break;
+        }
+      }
+
+      // Keyword boosting
+      let keywordHits = 0;
+      for (const kw of config.keywords) {
+        if (q.includes(kw)) keywordHits++;
+      }
+      if (keywordHits > 0) {
+        const keywordBoost = Math.min(0.3, keywordHits * 0.12);
+        confidence = Math.max(confidence, 0.4 + keywordBoost);
+      }
+
+      // Entity detection boost: if we can find a team/player in the query
+      if (confidence > 0) {
+        const hasTeam = this.detectTeams(q).length > 0;
+        const hasPlayer = this.detectPlayers(query).length > 0;
+        if (hasTeam || hasPlayer) confidence = Math.min(1.0, confidence + 0.05);
+      }
+
+      if (confidence > 0) {
+        results.push({ intent, confidence, config });
+      }
+    }
+
+    // Sort by confidence descending
+    results.sort((a, b) => b.confidence - a.confidence);
+
+    // If no intent matched at all, return unknown
+    if (results.length === 0) {
+      return { intent: "unknown", confidence: 0, allIntents: [], entities: this.extractEntities(query) };
+    }
+
+    return {
+      intent: results[0].intent,
+      confidence: results[0].confidence,
+      allIntents: results.slice(0, 3),
+      entities: this.extractEntities(query),
+    };
+  },
+
+  detectTeams(q) {
+    const found = [];
+    for (const word of q.split(/\s+/)) {
+      if (word.length >= 3) {
+        const team = DataAgent.findTeam(word);
+        if (team) found.push(team);
+      }
+    }
+    return found;
+  },
+
+  detectPlayers(query) {
+    const found = [];
+    const twoWordPattern = query.match(/[A-Z][a-z]+\s+[A-Z][a-z\-]+/g);
+    if (twoWordPattern) {
+      for (const name of twoWordPattern) {
+        const player = DataAgent.getPlayerStats(name);
+        if (player) found.push(player);
+      }
+    }
+    return found;
+  },
+
+  extractEntities(query) {
+    const q = query.toLowerCase();
+    const entities = { teams: [], players: [], dates: [], numbers: [] };
+    // Teams
+    entities.teams = this.detectTeams(q);
+    // Players
+    entities.players = this.detectPlayers(query);
+    // Dates
+    const dateMatch = q.match(/(?:april|march|february|january|may|june)\s*(\d{1,2})/i);
+    if (dateMatch) entities.dates.push(dateMatch[0]);
+    if (q.includes("tomorrow")) entities.dates.push("tomorrow");
+    if (q.includes("yesterday")) entities.dates.push("yesterday");
+    // Numbers
+    const nums = q.match(/\d+/g);
+    if (nums) entities.numbers = nums.map(Number);
+    return entities;
+  },
+
+  // Determine if we need web search based on confidence + intent
+  needsWebSearch(classification) {
+    // Always search for unknown intents
+    if (classification.intent === "unknown") return true;
+    // Low confidence → search
+    if (classification.confidence < 0.7) return true;
+    // General NBA questions often need fresh data
+    if (classification.intent === "general_nba") return true;
+    // Schedule queries with specific dates need ESPN
+    if (classification.intent === "schedule" && classification.entities.dates.length > 0) return true;
+    return false;
+  },
+};
+
+// WEB SEARCH AGENT — multi-source search with extraction and validation
+const WebSearchAgent = {
+  name: "WebSearchAgent",
+  searchLog: [],
+
+  async search(query, classification) {
+    const startTime = Date.now();
+    const logEntry = { query, intent: classification?.intent, confidence: classification?.confidence, timestamp: new Date().toISOString() };
+
+    try {
+      const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}&intent=${classification?.intent || ""}`);
+      const data = await resp.json();
+
+      logEntry.duration = Date.now() - startTime;
+      logEntry.success = !!data.answer;
+      logEntry.snippetCount = data.snippetCount || 0;
+      this.searchLog.push(logEntry);
+      // Keep log manageable
+      if (this.searchLog.length > 50) this.searchLog.shift();
+
+      if (!data.answer) return null;
+
+      // Validate and clean the response
+      return this.validateAndFormat(data.answer, query, classification);
+    } catch (err) {
+      logEntry.duration = Date.now() - startTime;
+      logEntry.success = false;
+      logEntry.error = err.message;
+      this.searchLog.push(logEntry);
+      return null;
+    }
+  },
+
+  validateAndFormat(rawAnswer, query, classification) {
+    // Remove obviously bad/short snippets
+    const lines = rawAnswer.split("\n\n").filter(l => l.trim().length > 15);
+    if (lines.length === 0) return null;
+
+    // Try to extract the most relevant info
+    const cleaned = lines.map(line => {
+      // Strip HTML artifacts
+      return line.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").trim();
+    }).filter(l => l.length > 15);
+
+    if (cleaned.length === 0) return null;
+
+    const intent = classification?.intent || "unknown";
+    const q = query.toLowerCase();
+
+    // Format based on intent
+    let header;
+    if (intent === "schedule" || /game|schedule|playing/i.test(q)) {
+      header = `📅 **Search Results — NBA Schedule**`;
+    } else if (intent === "general_nba" || /injury|trade|news|mvp|draft|playoff|champion/i.test(q)) {
+      header = `📰 **NBA News & Info**`;
+    } else if (/score|result|final/i.test(q)) {
+      header = `📊 **Game Results**`;
+    } else {
+      header = `🔍 **Search Results** for "${query}"`;
+    }
+
+    return `${header}\n\n${cleaned.join("\n\n")}\n\n—\n*Source: web search (${cleaned.length} results) · For built-in analytics, ask about a specific team or matchup.*`;
+  },
+
+  getRecentLog(n = 5) {
+    return this.searchLog.slice(-n);
+  },
+};
+
 // INTERFACE AGENT — local analytics engine
 const InterfaceAgent = {
   name: "InterfaceAgent",
@@ -1274,7 +1591,7 @@ export default function NBAAnalyticsApp() {
   }, []);
   const [messages, setMessages] = useState([{
     role: "assistant",
-    content: "**NBA Analytics AI online.** I run on 5 cooperative sub-agents:\n\n**DataAgent** — team + player stats, game data, and probabilistic odds\n**AnalyticsAgent** — multi-factor model (net rating, win%, recent form, home/away splits)\n**TrendsAgent** — streaks, O/U trends, strength-of-schedule analysis\n**ParlayAgent** — combined legs with EV calculation\n**InterfaceAgent** — that's me, synthesizing everything\n\nAsk about team stats, player stats, compare teams, view trends, game odds, or build a parlay!"
+    content: "**NBA Analytics AI online.** I run on 7 cooperative sub-agents:\n\n**QueryUnderstandingAgent** — NLP intent classification + confidence scoring\n**DataAgent** — team + player stats, game data, and probabilistic odds\n**AnalyticsAgent** — multi-factor model (net rating, win%, recent form, home/away splits)\n**TrendsAgent** — streaks, O/U trends, strength-of-schedule analysis\n**ParlayAgent** — combined legs with EV calculation\n**WebSearchAgent** — real-time web search for news, scores, and info\n**InterfaceAgent** — that's me, synthesizing everything\n\nAsk me anything about the NBA — if I don't have the answer locally, I'll search the web for you!"
   }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1352,31 +1669,58 @@ export default function NBAAnalyticsApp() {
     setMessages(prev => [...prev, { role:"user", content:q }]);
     setLoading(true);
 
-    // Try local engine first
-    const localReply = InterfaceAgent.query(q, games,
-      { selections: parlaySelections, result: parlayResult });
+    try {
+      // Step 1: QueryUnderstandingAgent classifies the query
+      const classification = QueryUnderstandingAgent.classify(q);
+      const needsSearch = QueryUnderstandingAgent.needsWebSearch(classification);
 
-    // If local engine returned the help/default text, search the web instead
-    if (localReply.startsWith("I can help with:")) {
-      try {
-        const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
-        const data = await resp.json();
-        if (data.answer) {
-          setMessages(prev => [...prev, { role:"assistant",
-            content: `🔍 **Web Search Results** for "${q}":\n\n${data.answer}\n\n—\n*Source: web search. For analytics, try asking about a specific team or matchup.*` }]);
+      // Step 2: Try local InterfaceAgent first (if confidence is decent)
+      let localReply = null;
+      if (classification.confidence >= 0.4) {
+        localReply = InterfaceAgent.query(q, games,
+          { selections: parlaySelections, result: parlayResult });
+        // Check if the local engine actually answered (vs returning help text)
+        if (localReply.startsWith("I can help with:")) localReply = null;
+      }
+
+      // Step 3: If local answered confidently, use it
+      if (localReply && !needsSearch) {
+        setTimeout(() => {
+          setMessages(prev => [...prev, { role:"assistant", content: localReply }]);
           setLoading(false);
-          return;
+        }, 200 + Math.random() * 300);
+        return;
+      }
+
+      // Step 4: If local gave a partial answer but we also need search (low confidence),
+      // or if local had no answer — try web search
+      if (!localReply || needsSearch) {
+        const webResult = await WebSearchAgent.search(q, classification);
+
+        if (webResult && localReply) {
+          // Combine local + web: local answer is primary, web supplements
+          setMessages(prev => [...prev, { role:"assistant",
+            content: `${localReply}\n\n---\n\n${webResult}` }]);
+        } else if (webResult) {
+          // Web only
+          setMessages(prev => [...prev, { role:"assistant", content: webResult }]);
+        } else if (localReply) {
+          // Local only (web failed)
+          setMessages(prev => [...prev, { role:"assistant", content: localReply }]);
+        } else {
+          // Both failed — give helpful fallback
+          setMessages(prev => [...prev, { role:"assistant",
+            content: `I wasn't able to find specific info for "${q}". Try:\n\n• A team name: "Celtics" or "team stats BOS"\n• A player: "LeBron James stats"\n• A matchup: "Lakers vs Warriors"\n• A parlay: "build me a 3 leg parlay"\n• General: "who wins tonight" or "best bets"\n\nOr rephrase your question and I'll search the web for you.` }]);
         }
-      } catch {}
-      // Web search failed — show default help
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      // Catastrophic fallback
+      const localReply = InterfaceAgent.query(q, games,
+        { selections: parlaySelections, result: parlayResult });
       setMessages(prev => [...prev, { role:"assistant", content: localReply }]);
       setLoading(false);
-    } else {
-      // Local engine handled it
-      setTimeout(() => {
-        setMessages(prev => [...prev, { role:"assistant", content: localReply }]);
-        setLoading(false);
-      }, 200 + Math.random() * 300);
     }
   };
 
@@ -1409,7 +1753,7 @@ export default function NBAAnalyticsApp() {
           </div>
         </div>
         <div style={{ display:"flex", gap:16 }}>
-          {["DataAgent","AnalyticsAgent","TrendsAgent","ParlayAgent","InterfaceAgent"].map(a => (
+          {["QueryAgent","DataAgent","AnalyticsAgent","TrendsAgent","ParlayAgent","WebSearch","InterfaceAgent"].map(a => (
             <AgentBadge key={a} name={a} />
           ))}
         </div>
@@ -1599,7 +1943,7 @@ export default function NBAAnalyticsApp() {
             display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
             <span style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
               letterSpacing:"0.5px" }}>PIPELINE:</span>
-            {["User Query","InterfaceAgent","DataAgent + AnalyticsAgent","TrendsAgent","ParlayAgent","Unified Response"].map((s,i,arr) => (
+            {["User Query","QueryUnderstanding","DataAgent + Analytics","Trends + Parlay","WebSearch (if needed)","Unified Response"].map((s,i,arr) => (
               <span key={s} style={{ display:"flex", alignItems:"center", gap:8 }}>
                 <span style={{ fontSize:11, color: i === 0 ? C.blue : i === arr.length-1 ? C.green : C.accent,
                   fontFamily:"'Barlow Condensed',sans-serif" }}>{s}</span>

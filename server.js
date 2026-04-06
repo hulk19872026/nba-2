@@ -129,14 +129,24 @@ app.get("/api/games", async (req, res) => {
   }
 });
 
-// Web search proxy for NBA questions
+// Web search proxy for NBA questions — intent-aware
 app.get("/api/search", async (req, res) => {
   const query = req.query.q;
+  const intent = req.query.intent || "";
   if (!query) return res.json({ answer: null });
 
   try {
-    // Use Google's custom search or a scraping approach
-    const searchQuery = encodeURIComponent(`NBA ${query}`);
+    // Refine search query based on intent
+    let searchPrefix = "NBA";
+    if (intent === "schedule") searchPrefix = "NBA schedule games";
+    else if (intent === "general_nba" && /injury|injured/i.test(query)) searchPrefix = "NBA injury report";
+    else if (intent === "general_nba" && /trade/i.test(query)) searchPrefix = "NBA trade news";
+    else if (intent === "general_nba" && /playoff/i.test(query)) searchPrefix = "NBA playoffs 2026";
+    else if (intent === "general_nba" && /draft/i.test(query)) searchPrefix = "NBA draft";
+    else if (intent === "general_nba" && /mvp/i.test(query)) searchPrefix = "NBA MVP race 2026";
+    else if (/score|result/i.test(query)) searchPrefix = "NBA scores";
+
+    const searchQuery = encodeURIComponent(`${searchPrefix} ${query}`);
 
     // Try multiple search sources
     let snippets = [];
