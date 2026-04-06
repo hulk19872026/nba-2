@@ -7,10 +7,7 @@ RUN npm run build
 
 FROM node:20-alpine
 WORKDIR /app
+RUN npm install -g serve
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/server.js ./
-COPY --from=build /app/package.json ./
-COPY --from=build /app/package-lock.json ./
-RUN npm ci --omit=dev
 EXPOSE 8080
-CMD ["node", "server.js"]
+CMD ["serve", "dist", "-s", "-l", "8080"]

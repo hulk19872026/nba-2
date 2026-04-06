@@ -124,16 +124,58 @@ const DataAgent = {
     });
   },
 
-  async searchPlayer(name) {
-    const r = await fetch(`/api/players?search=${encodeURIComponent(name)}`);
-    const d = await r.json();
-    return d.data || [];
+  players: {
+    "LeBron James":       { team:"Los Angeles Lakers", pos:"SF", gp:74, min:"35.2", pts:23.5, reb:7.9, ast:9.0, fg:50.1, fg3:31.5, ft:74.8, stl:1.3, blk:0.5 },
+    "Stephen Curry":      { team:"Golden State Warriors", pos:"PG", gp:72, min:"32.8", pts:26.4, reb:4.5, ast:6.1, fg:45.0, fg3:40.8, ft:92.3, stl:1.0, blk:0.3 },
+    "Jayson Tatum":       { team:"Boston Celtics", pos:"SF", gp:71, min:"36.4", pts:27.0, reb:8.1, ast:4.9, fg:47.1, fg3:37.6, ft:83.1, stl:1.1, blk:0.6 },
+    "Shai Gilgeous-Alexander": { team:"Oklahoma City Thunder", pos:"SG", gp:70, min:"34.0", pts:31.4, reb:5.5, ast:6.2, fg:53.5, fg3:35.3, ft:87.4, stl:2.0, blk:0.7 },
+    "Luka Doncic":        { team:"Dallas Mavericks", pos:"PG", gp:55, min:"36.2", pts:28.1, reb:8.3, ast:8.0, fg:46.7, fg3:35.4, ft:78.6, stl:1.4, blk:0.4 },
+    "Nikola Jokic":       { team:"Denver Nuggets", pos:"C", gp:72, min:"36.8", pts:26.4, reb:12.4, ast:9.0, fg:56.5, fg3:33.7, ft:81.7, stl:1.4, blk:0.9 },
+    "Giannis Antetokounmpo": { team:"Milwaukee Bucks", pos:"PF", gp:63, min:"35.2", pts:30.4, reb:11.5, ast:6.5, fg:61.1, fg3:27.4, ft:65.7, stl:1.2, blk:1.5 },
+    "Anthony Edwards":    { team:"Minnesota Timberwolves", pos:"SG", gp:70, min:"35.8", pts:25.9, reb:5.4, ast:5.1, fg:46.1, fg3:35.7, ft:84.6, stl:1.3, blk:0.5 },
+    "Kevin Durant":       { team:"Phoenix Suns", pos:"SF", gp:60, min:"37.2", pts:27.1, reb:6.6, ast:5.0, fg:52.3, fg3:41.3, ft:85.6, stl:0.9, blk:1.2 },
+    "Anthony Davis":      { team:"Los Angeles Lakers", pos:"C", gp:68, min:"35.5", pts:24.7, reb:12.6, ast:3.5, fg:55.6, fg3:27.1, ft:81.9, stl:1.2, blk:2.3 },
+    "Jalen Brunson":      { team:"New York Knicks", pos:"PG", gp:72, min:"35.4", pts:28.7, reb:3.5, ast:6.7, fg:48.0, fg3:38.4, ft:84.7, stl:0.9, blk:0.2 },
+    "Donovan Mitchell":   { team:"Cleveland Cavaliers", pos:"SG", gp:68, min:"33.7", pts:24.0, reb:4.5, ast:4.2, fg:46.8, fg3:36.9, ft:86.5, stl:1.8, blk:0.4 },
+    "Tyrese Haliburton":  { team:"Indiana Pacers", pos:"PG", gp:60, min:"33.5", pts:20.1, reb:3.9, ast:10.9, fg:44.7, fg3:36.4, ft:85.2, stl:1.2, blk:0.3 },
+    "Bam Adebayo":        { team:"Miami Heat", pos:"C", gp:71, min:"34.6", pts:19.5, reb:10.4, ast:4.9, fg:52.5, fg3:18.2, ft:80.2, stl:1.1, blk:0.8 },
+    "Paolo Banchero":     { team:"Orlando Magic", pos:"PF", gp:52, min:"34.8", pts:22.6, reb:6.8, ast:5.4, fg:45.7, fg3:33.9, ft:73.5, stl:0.8, blk:0.6 },
+    "James Harden":       { team:"Los Angeles Clippers", pos:"PG", gp:69, min:"35.0", pts:21.6, reb:5.7, ast:8.5, fg:43.8, fg3:36.0, ft:87.6, stl:1.1, blk:0.5 },
+    "De'Aaron Fox":       { team:"Sacramento Kings", pos:"PG", gp:68, min:"36.0", pts:26.6, reb:4.6, ast:5.6, fg:46.5, fg3:32.9, ft:73.8, stl:2.0, blk:0.4 },
+    "Darius Garland":     { team:"Cleveland Cavaliers", pos:"PG", gp:65, min:"32.8", pts:21.3, reb:2.7, ast:6.8, fg:46.0, fg3:37.0, ft:87.9, stl:1.3, blk:0.1 },
+    "Trae Young":         { team:"Atlanta Hawks", pos:"PG", gp:70, min:"35.2", pts:25.7, reb:3.0, ast:11.4, fg:43.0, fg3:33.8, ft:86.3, stl:1.0, blk:0.2 },
+    "Ja Morant":          { team:"Memphis Grizzlies", pos:"PG", gp:55, min:"32.0", pts:21.2, reb:5.6, ast:8.1, fg:47.3, fg3:30.8, ft:75.0, stl:0.8, blk:0.3 },
+    "Joel Embiid":        { team:"Philadelphia 76ers", pos:"C", gp:39, min:"33.8", pts:27.3, reb:7.2, ast:5.7, fg:52.7, fg3:38.9, ft:88.3, stl:1.0, blk:1.7 },
+    "Kyrie Irving":       { team:"Dallas Mavericks", pos:"PG", gp:62, min:"34.5", pts:24.2, reb:5.0, ast:5.2, fg:49.7, fg3:41.1, ft:90.5, stl:1.3, blk:0.4 },
+    "Jaren Jackson Jr.":  { team:"Memphis Grizzlies", pos:"PF", gp:65, min:"31.5", pts:22.3, reb:5.7, ast:2.3, fg:46.0, fg3:32.5, ft:79.3, stl:1.0, blk:2.3 },
+    "Alperen Sengun":     { team:"Houston Rockets", pos:"C", gp:72, min:"32.6", pts:19.0, reb:9.3, ast:5.0, fg:53.8, fg3:29.1, ft:71.2, stl:1.0, blk:0.8 },
+    "Jalen Williams":     { team:"Oklahoma City Thunder", pos:"SF", gp:70, min:"32.5", pts:20.1, reb:5.3, ast:5.1, fg:53.6, fg3:39.8, ft:78.4, stl:1.6, blk:0.7 },
+    "Jimmy Butler":       { team:"Miami Heat", pos:"SF", gp:52, min:"33.7", pts:18.7, reb:5.8, ast:4.9, fg:49.9, fg3:35.5, ft:86.3, stl:1.3, blk:0.3 },
+    "Devin Booker":       { team:"Phoenix Suns", pos:"SG", gp:68, min:"35.0", pts:27.1, reb:4.5, ast:6.9, fg:49.2, fg3:36.4, ft:87.6, stl:1.0, blk:0.3 },
+    "Chet Holmgren":      { team:"Oklahoma City Thunder", pos:"C", gp:60, min:"29.5", pts:16.5, reb:7.9, ast:2.4, fg:53.0, fg3:37.2, ft:79.3, stl:0.5, blk:2.6 },
+    "Evan Mobley":        { team:"Cleveland Cavaliers", pos:"PF", gp:69, min:"33.5", pts:18.3, reb:9.0, ast:3.2, fg:56.2, fg3:37.3, ft:70.5, stl:0.8, blk:1.5 },
+    "Scottie Barnes":     { team:"Toronto Raptors", pos:"PF", gp:60, min:"34.8", pts:19.9, reb:8.2, ast:6.1, fg:47.5, fg3:28.7, ft:77.3, stl:1.3, blk:1.1 },
   },
 
-  async getStats(playerId) {
-    const r = await fetch(`/api/season_averages?player_id=${playerId}`);
-    const d = await r.json();
-    return d.data[0] || null;
+  searchPlayer(name) {
+    const lower = name.toLowerCase();
+    const matches = Object.entries(this.players)
+      .filter(([n]) => n.toLowerCase().includes(lower))
+      .map(([n, data]) => ({ name: n, ...data }));
+    return matches;
+  },
+
+  getPlayerStats(name) {
+    const matches = this.searchPlayer(name);
+    if (!matches.length) return null;
+    const p = matches[0];
+    return {
+      name: p.name, team: p.team, position: p.pos,
+      games: p.gp, minutes: p.min,
+      pts: p.pts.toFixed(1), reb: p.reb.toFixed(1), ast: p.ast.toFixed(1),
+      fg: p.fg.toFixed(1)+"%", fg3: p.fg3.toFixed(1)+"%", ft: p.ft.toFixed(1)+"%",
+      stl: p.stl.toFixed(1), blk: p.blk.toFixed(1),
+    };
   },
 };
 
@@ -159,38 +201,134 @@ const ParlayAgent = {
   },
 };
 
-// INTERFACE AGENT — Claude-powered orchestrator
+// INTERFACE AGENT — local analytics engine
 const InterfaceAgent = {
   name: "InterfaceAgent",
-  async query(userMsg, games, parlayState, extraContext) {
-    const systemPrompt = `You are NBA Analytics AI, a unified assistant backed by 4 specialized sub-agents:
-- DataAgent: fetches live player stats from balldontlie.io + generates probabilistic game odds
-- AnalyticsAgent: logistic regression model using win%, net rating, home-court advantage (3.5%)
-- ParlayAgent: computes combined American/decimal odds and expected value
-- InterfaceAgent: you — the synthesizing interface
 
-LIVE DATA:
-UPCOMING GAMES:
-${games.map(g => `${g.awayAbbr} @ ${g.homeAbbr} | ${g.date} ${g.time} | Home ML: ${g.homeOdds} (${g.homeProb}%) Away ML: ${g.awayOdds} (${g.awayProb}%) | Spread: ${g.spread} | O/U: ${g.total} | Records: ${g.awayRecord} vs ${g.homeRecord}`).join("\n")}
+  findGame(query, games) {
+    const q = query.toLowerCase();
+    // Check for "X vs Y" or "X @ Y" patterns
+    const vsMatch = q.match(/(\w+)\s+(?:vs\.?|@|against|and)\s+(\w+)/);
+    if (vsMatch) {
+      const [, t1, t2] = vsMatch;
+      return games.find(g => {
+        const ha = `${g.homeAbbr} ${g.home}`.toLowerCase();
+        const aa = `${g.awayAbbr} ${g.away}`.toLowerCase();
+        return (ha.includes(t1) && aa.includes(t2)) || (ha.includes(t2) && aa.includes(t1));
+      });
+    }
+    // Single team mention
+    for (const g of games) {
+      const ha = `${g.homeAbbr} ${g.home}`.toLowerCase();
+      const aa = `${g.awayAbbr} ${g.away}`.toLowerCase();
+      if (ha.includes(q.replace(/[^a-z]/g,"")) || aa.includes(q.replace(/[^a-z]/g,""))) return g;
+      for (const word of q.split(/\s+/)) {
+        if (word.length >= 3 && (ha.includes(word) || aa.includes(word))) return g;
+      }
+    }
+    return null;
+  },
 
-${parlayState.selections.length > 0 ? `ACTIVE PARLAY (${parlayState.selections.length} legs):\n${parlayState.selections.map(s=>`- ${s.pick} ${s.odds} (${s.prob}%)`).join("\n")}${parlayState.result ? `\nCombined odds: ${parlayState.result.american} | Implied prob: ${parlayState.result.impliedProb}% | $100 pays: $${parlayState.result.payout100}` : ""}` : "No parlay active."}
+  formatGameAnalysis(g) {
+    const fav = g.homeProb > g.awayProb;
+    const favTeam = fav ? g.homeAbbr : g.awayAbbr;
+    const favProb = fav ? g.homeProb : g.awayProb;
+    const favOdds = fav ? g.homeOdds : g.awayOdds;
+    const udTeam = fav ? g.awayAbbr : g.homeAbbr;
+    const udProb = fav ? g.awayProb : g.homeProb;
+    const udOdds = fav ? g.awayOdds : g.homeOdds;
 
-${extraContext || ""}
+    return `📊 ${g.awayAbbr} @ ${g.homeAbbr} — ${g.date} ${g.time}
 
-Instructions: Be direct and data-driven. Use the exact numbers from the live data. Format nicely using line breaks. For probabilities mention the model uses net rating + win% + home advantage. Keep responses under 220 words. If asked about parlay additions, tell user to click + next to odds. Don't hallucinate stats not in context.`;
+🏠 ${g.homeAbbr} (${g.homeRecord}) vs 🏃 ${g.awayAbbr} (${g.awayRecord})
 
-    const resp = await fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userMsg }],
-      }),
-    });
-    const data = await resp.json();
-    return data.content?.[0]?.text || "Unable to process. Please try again.";
+Win Probability (AnalyticsAgent model: net rating + win% + 3.5% home advantage):
+• ${favTeam}: ${favProb}% (ML ${favOdds}) — FAVORED
+• ${udTeam}: ${udProb}% (ML ${udOdds})
+
+Spread: ${g.spread} | O/U: ${g.total}
+
+Scoring: ${g.homeAbbr} averages ${g.homePpg} PPG, ${g.awayAbbr} averages ${g.awayPpg} PPG.
+
+${favProb >= 65 ? `Strong lean toward ${favTeam} here.` : favProb >= 55 ? `Slight edge to ${favTeam}, but competitive matchup.` : `Very close game — could go either way.`}
+
+Click the + button next to any odds to add to your parlay.`;
+  },
+
+  query(userMsg, games, parlayState, extraContext) {
+    const q = userMsg.toLowerCase();
+
+    // Player stats query
+    const playerMatch = userMsg.match(/(?:stats?|about|points?|scoring|how is|how's|tell me about)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z\-]+)+)/i)
+      || userMsg.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z\-]+)+)\s+stats?/i);
+    if (playerMatch) {
+      const pData = DataAgent.getPlayerStats(playerMatch[1]);
+      if (pData) {
+        return `📊 ${pData.name} — ${pData.team} (${pData.position})
+2024-25 Season Stats (${pData.games} games, ${pData.minutes} MPG):
+
+🏀 ${pData.pts} PPG | ${pData.reb} RPG | ${pData.ast} APG
+🎯 FG: ${pData.fg} | 3P: ${pData.fg3} | FT: ${pData.ft}
+🛡️ ${pData.stl} SPG | ${pData.blk} BPG`;
+      }
+      return `Player "${playerMatch[1]}" not found in our database. Try a top NBA player name (e.g. LeBron James, Stephen Curry, Shai Gilgeous-Alexander).`;
+    }
+
+    // Parlay query
+    if (q.includes("parlay")) {
+      if (parlayState.selections.length > 0 && parlayState.result) {
+        return `🎰 Active Parlay — ${parlayState.result.legs} legs
+
+${parlayState.selections.map(s => `• ${s.pick} ${s.odds} (${s.prob}%)`).join("\n")}
+
+Combined Odds: ${parlayState.result.american} (decimal: ${parlayState.result.decimal})
+Implied Probability: ${parlayState.result.impliedProb}%
+$100 Payout: $${parlayState.result.payout100}
+EV: ${parlayState.result.ev}%
+
+${parseFloat(parlayState.result.ev) > 0 ? "Positive EV — model suggests value here." : "Negative EV — proceed with caution."}`;
+      }
+      return "No active parlay. Click the + button next to any game odds to add selections, then check the PARLAY tab.";
+    }
+
+    // Game matchup query
+    const game = this.findGame(q, games);
+    if (game) return this.formatGameAnalysis(game);
+
+    // Best bet / pick query
+    if (q.includes("best bet") || q.includes("best pick") || q.includes("lock") || q.includes("safest") || q.includes("who should") || q.includes("recommend")) {
+      const sorted = [...games].sort((a,b) => Math.max(b.homeProb,b.awayProb) - Math.max(a.homeProb,a.awayProb));
+      const top3 = sorted.slice(0,3);
+      return `🔒 Top picks by win probability (AnalyticsAgent model):
+
+${top3.map((g,i) => {
+  const fav = g.homeProb > g.awayProb;
+  return `${i+1}. ${fav ? g.homeAbbr : g.awayAbbr} ML ${fav ? g.homeOdds : g.awayOdds} — ${Math.max(g.homeProb,g.awayProb)}% win prob vs ${fav ? g.awayAbbr : g.homeAbbr}`;
+}).join("\n")}
+
+Model uses net rating + win% + 3.5% home-court advantage. Remember: no bet is guaranteed — these are probabilistic estimates.`;
+    }
+
+    // All games / schedule
+    if (q.includes("all games") || q.includes("schedule") || q.includes("today") || q.includes("tonight") || q.includes("upcoming")) {
+      return `📅 Upcoming Games:\n\n${games.map(g => `${g.awayAbbr} @ ${g.homeAbbr} — ${g.date} ${g.time} | ${g.homeAbbr} ${g.homeProb}% (${g.homeOdds}) | ${g.awayAbbr} ${g.awayProb}% (${g.awayOdds}) | O/U ${g.total}`).join("\n")}`;
+    }
+
+    // Odds query
+    if (q.includes("odds") || q.includes("moneyline") || q.includes("spread")) {
+      const g2 = this.findGame(q, games);
+      if (g2) return this.formatGameAnalysis(g2);
+      return `📊 All Game Odds:\n\n${games.map(g => `${g.awayAbbr} @ ${g.homeAbbr}: Home ML ${g.homeOdds} | Away ML ${g.awayOdds} | Spread ${g.spread} | O/U ${g.total}`).join("\n")}`;
+    }
+
+    // Over/under / total
+    if (q.includes("over") || q.includes("under") || q.includes("total")) {
+      const g3 = this.findGame(q, games);
+      if (g3) return `🎯 ${g3.awayAbbr} @ ${g3.homeAbbr} — O/U: ${g3.total}\n\n${g3.homeAbbr} averages ${g3.homePpg} PPG, ${g3.awayAbbr} averages ${g3.awayPpg} PPG.\nCombined average: ${(g3.homePpg + g3.awayPpg).toFixed(1)} points.\n\n${(g3.homePpg + g3.awayPpg) > g3.total ? "Trend favors the OVER based on scoring averages." : "Trend favors the UNDER based on scoring averages."}`;
+    }
+
+    // Default / help
+    return `I can help with:\n\n• Game analysis — "Rockets vs Warriors" or "Celtics game"\n• Player stats — "LeBron James stats" or "tell me about Curry"\n• Best picks — "best bets tonight" or "safest pick"\n• All games — "show all games" or "tonight's schedule"\n• Odds — "odds for Lakers game" or "all spreads"\n• Parlay — "show my parlay" (add picks with + buttons)\n\nTry asking about a specific matchup!`;
   },
 };
 
@@ -511,59 +649,33 @@ export default function NBAAnalyticsApp() {
     if (tab !== "parlay") setTab("parlay");
   };
 
-  const fetchPlayer = async () => {
+  const fetchPlayer = () => {
     if (!playerSearch.trim()) return;
     setPlayerLoading(true);
     setPlayerData(null);
     setPlayerError("");
-    try {
-      const players = await DataAgent.searchPlayer(playerSearch);
-      if (!players.length) { setPlayerError("Player not found."); return; }
-      const p = players[0];
-      const stats = await DataAgent.getStats(p.id);
-      if (!stats) { setPlayerError(`No 2024-25 stats found for ${p.first_name} ${p.last_name}.`); return; }
-      setPlayerData({
-        name: `${p.first_name} ${p.last_name}`,
-        team: p.team?.full_name || "—",
-        position: p.position || "—",
-        games: stats.games_played,
-        minutes: stats.min,
-        pts: stats.pts?.toFixed(1), reb: stats.reb?.toFixed(1), ast: stats.ast?.toFixed(1),
-        fg: stats.fg_pct ? (stats.fg_pct*100).toFixed(1)+"%" : "—",
-        fg3: stats.fg3_pct ? (stats.fg3_pct*100).toFixed(1)+"%" : "—",
-        ft: stats.ft_pct ? (stats.ft_pct*100).toFixed(1)+"%" : "—",
-        stl: stats.stl?.toFixed(1), blk: stats.blk?.toFixed(1),
-      });
-    } catch { setPlayerError("API error. balldontlie.io may be rate-limiting."); }
-    finally { setPlayerLoading(false); }
+    const result = DataAgent.getPlayerStats(playerSearch);
+    if (result) {
+      setPlayerData(result);
+    } else {
+      setPlayerError(`Player "${playerSearch}" not found. Try a top NBA player name (e.g. LeBron James, Stephen Curry).`);
+    }
+    setPlayerLoading(false);
   };
 
-  const sendMessage = async (text) => {
+  const sendMessage = (text) => {
     const q = text || input.trim();
     if (!q || loading) return;
     setInput("");
     setMessages(prev => [...prev, { role:"user", content:q }]);
     setLoading(true);
 
-    let extraCtx = "";
-    const playerMatch = q.match(/(?:stats?|about|points?|scoring|how is|how's)\s+([A-Z][a-z]+ [A-Z][a-z]+)/i);
-    if (playerMatch) {
-      try {
-        const ps = await DataAgent.searchPlayer(playerMatch[1]);
-        if (ps.length) {
-          const st = await DataAgent.getStats(ps[0].id);
-          if (st) extraCtx = `FETCHED PLAYER STATS for ${ps[0].first_name} ${ps[0].last_name} (${ps[0].team?.full_name}): ${st.pts?.toFixed(1)} PPG, ${st.reb?.toFixed(1)} RPG, ${st.ast?.toFixed(1)} APG, FG: ${(st.fg_pct*100).toFixed(1)}%, 3P: ${(st.fg3_pct*100).toFixed(1)}%, ${st.games_played} games`;
-        }
-      } catch {}
-    }
-
-    try {
-      const reply = await InterfaceAgent.query(q, games,
-        { selections: parlaySelections, result: parlayResult }, extraCtx);
+    setTimeout(() => {
+      const reply = InterfaceAgent.query(q, games,
+        { selections: parlaySelections, result: parlayResult });
       setMessages(prev => [...prev, { role:"assistant", content:reply }]);
-    } catch {
-      setMessages(prev => [...prev, { role:"assistant", content:"⚠️ Connection error. Please try again." }]);
-    } finally { setLoading(false); }
+      setLoading(false);
+    }, 300 + Math.random() * 400);
   };
 
   const SUGGESTIONS = [

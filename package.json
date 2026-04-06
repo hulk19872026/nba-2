@@ -6,13 +6,13 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "start": "node server.js",
+    "start": "serve dist -s -l 8080",
     "preview": "vite preview"
   },
   "dependencies": {
     "react": "^18.3.1",
-    "express": "^4.21.0",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "serve": "^14.2.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
