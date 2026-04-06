@@ -146,7 +146,7 @@ const DataAgent = {
     return { t1, t2 };
   },
 
-  buildGames() {
+  buildStaticGames() {
     const matchups = [
       ["New York Knicks",        "Boston Celtics"],
       ["Oklahoma City Thunder",  "Denver Nuggets"],
@@ -163,30 +163,55 @@ const DataAgent = {
     return matchups.map(([home, away], i) => {
       const h = this.teams[home];
       const a = this.teams[away];
-      const homeProb = AnalyticsAgent.calcProb(h, a);
-      const awayProb = 1 - homeProb;
-      const hOdds = AnalyticsAgent.toAmerican(homeProb);
-      const aOdds = AnalyticsAgent.toAmerican(awayProb);
-      const netDiff = (h.ppg - h.oppPpg) - (a.ppg - a.oppPpg);
-      const spread = -(netDiff / 2 + 1.5);
-      const total = Math.round((h.ppg + a.ppg + h.oppPpg + a.oppPpg) / 2);
-      const d = new Date(today);
-      d.setDate(today.getDate() + Math.floor(i / 4));
+      return this.enrichGame(home, away, h, a, i + 1,
+        today.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}),
+        times[i]);
+    });
+  },
 
-      return {
-        id: i + 1,
-        home, away,
-        homeAbbr: h.abbr, awayAbbr: a.abbr,
-        homeRecord: `${h.wins}-${h.losses}`, awayRecord: `${a.wins}-${a.losses}`,
-        date: d.toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}),
-        time: times[i],
-        homeProb: Math.round(homeProb * 100),
-        awayProb: Math.round(awayProb * 100),
-        homeOdds: hOdds > 0 ? `+${hOdds}` : `${hOdds}`, homeOddsRaw: hOdds,
-        awayOdds: aOdds > 0 ? `+${aOdds}` : `${aOdds}`, awayOddsRaw: aOdds,
-        spread: spread > 0 ? `+${spread.toFixed(1)}` : `${spread.toFixed(1)}`,
-        total, homePpg: h.ppg, awayPpg: a.ppg,
-      };
+  enrichGame(homeName, awayName, h, a, id, date, time, extra = {}) {
+    const homeProb = AnalyticsAgent.calcProb(h || { wins:30, losses:30, ppg:110, oppPpg:110, offRtg:110, defRtg:110 },
+                                              a || { wins:30, losses:30, ppg:110, oppPpg:110, offRtg:110, defRtg:110 });
+    const awayProb = 1 - homeProb;
+    const hOdds = AnalyticsAgent.toAmerican(homeProb);
+    const aOdds = AnalyticsAgent.toAmerican(awayProb);
+    const hPpg = h?.ppg || 110; const aPpg = a?.ppg || 110;
+    const hOpp = h?.oppPpg || 110; const aOpp = a?.oppPpg || 110;
+    const netDiff = (hPpg - hOpp) - (aPpg - aOpp);
+    const spread = extra.espnSpread != null ? (extra.espnSpread > 0 ? `+${extra.espnSpread}` : `${extra.espnSpread}`) :
+      (-(netDiff / 2 + 1.5) > 0 ? `+${(-(netDiff / 2 + 1.5)).toFixed(1)}` : `${(-(netDiff / 2 + 1.5)).toFixed(1)}`);
+    const total = extra.espnOverUnder || Math.round((hPpg + aPpg + hOpp + aOpp) / 2);
+    return {
+      id, home: homeName, away: awayName,
+      homeAbbr: h?.abbr || extra.homeAbbr || "???", awayAbbr: a?.abbr || extra.awayAbbr || "???",
+      homeRecord: extra.homeRecord || (h ? `${h.wins}-${h.losses}` : "—"),
+      awayRecord: extra.awayRecord || (a ? `${a.wins}-${a.losses}` : "—"),
+      date, time,
+      homeProb: Math.round(homeProb * 100), awayProb: Math.round(awayProb * 100),
+      homeOdds: hOdds > 0 ? `+${hOdds}` : `${hOdds}`, homeOddsRaw: hOdds,
+      awayOdds: aOdds > 0 ? `+${aOdds}` : `${aOdds}`, awayOddsRaw: aOdds,
+      spread, total, homePpg: hPpg, awayPpg: aPpg,
+      homeScore: extra.homeScore || null, awayScore: extra.awayScore || null,
+      status: extra.status || "scheduled", statusDetail: extra.statusDetail || "",
+      isLive: extra.status === "STATUS_IN_PROGRESS",
+      isFinal: extra.status === "STATUS_FINAL",
+    };
+  },
+
+  parseESPNGames(espnGames) {
+    return espnGames.map((g, i) => {
+      const h = this.findTeam(g.homeAbbr);
+      const a = this.findTeam(g.awayAbbr);
+      return this.enrichGame(
+        g.home || h?.name || g.homeAbbr,
+        g.away || a?.name || g.awayAbbr,
+        h, a, i + 1, g.date, g.gameTime,
+        { homeAbbr: g.homeAbbr, awayAbbr: g.awayAbbr,
+          homeRecord: g.homeRecord, awayRecord: g.awayRecord,
+          homeScore: g.homeScore, awayScore: g.awayScore,
+          status: g.status, statusDetail: g.statusDetail,
+          espnSpread: g.espnSpread, espnOverUnder: g.espnOverUnder }
+      );
     });
   },
 
@@ -720,18 +745,31 @@ function GameCard({ game, parlaySelections, onToggle }) {
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:4 }}>
         <span style={{ fontSize:10, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
           letterSpacing:"0.5px" }}>{game.date} · {game.time}</span>
-        <span style={{ fontSize:10, background:"#1A2B44", color:C.muted, padding:"1px 6px",
-          borderRadius:3, fontFamily:"'Barlow Condensed',sans-serif" }}>
-          O/U {game.total}
-        </span>
+        <div style={{ display:"flex", gap:4, alignItems:"center" }}>
+          {game.isLive && <span style={{ fontSize:9, background:C.red, color:"#fff", padding:"1px 5px",
+            borderRadius:3, fontFamily:"'Barlow Condensed',sans-serif", fontWeight:600,
+            animation:"pulse 1.8s ease-in-out infinite" }}>LIVE</span>}
+          {game.isFinal && <span style={{ fontSize:9, background:C.dim, color:C.text, padding:"1px 5px",
+            borderRadius:3, fontFamily:"'Barlow Condensed',sans-serif" }}>FINAL</span>}
+          <span style={{ fontSize:10, background:"#1A2B44", color:C.muted, padding:"1px 6px",
+            borderRadius:3, fontFamily:"'Barlow Condensed',sans-serif" }}>
+            O/U {game.total}
+          </span>
+        </div>
       </div>
 
       {/* Matchup row */}
       <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:6 }}>
         {/* Away team */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", flex:1 }}>
-          <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:C.text,
-            lineHeight:1 }}>{game.awayAbbr}</span>
+          <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:C.text,
+              lineHeight:1 }}>{game.awayAbbr}</span>
+            {(game.isLive || game.isFinal) && game.awayScore != null && (
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700,
+                color: game.isFinal && game.awayScore > game.homeScore ? C.green : C.text }}>{game.awayScore}</span>
+            )}
+          </div>
           <span style={{ fontSize:10, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif" }}>
             {game.awayRecord}
           </span>
@@ -740,8 +778,14 @@ function GameCard({ game, parlaySelections, onToggle }) {
           fontWeight:600 }}>@</span>
         {/* Home team */}
         <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", flex:1 }}>
-          <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:C.text,
-            lineHeight:1 }}>{game.homeAbbr}</span>
+          <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+            {(game.isLive || game.isFinal) && game.homeScore != null && (
+              <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:18, fontWeight:700,
+                color: game.isFinal && game.homeScore > game.awayScore ? C.green : C.text }}>{game.homeScore}</span>
+            )}
+            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:C.text,
+              lineHeight:1 }}>{game.homeAbbr}</span>
+          </div>
           <span style={{ fontSize:10, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif" }}>
             {game.homeRecord}
           </span>
@@ -1055,8 +1099,27 @@ function ChatMessage({ msg }) {
 export default function NBAAnalyticsApp() {
   useEffect(() => { injectFonts(); }, []);
 
-  const [games] = useState(() => DataAgent.buildGames());
+  const [games, setGames] = useState(() => DataAgent.buildStaticGames());
+  const [gamesSource, setGamesSource] = useState("static");
+  const [gamesLoading, setGamesLoading] = useState(true);
   const [tab, setTab] = useState("games");
+
+  // Fetch live games from ESPN via backend
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const resp = await fetch("/api/games");
+        const data = await resp.json();
+        if (!cancelled && data.games && data.games.length > 0) {
+          setGames(DataAgent.parseESPNGames(data.games));
+          setGamesSource("espn");
+        }
+      } catch { /* keep static fallback */ }
+      finally { if (!cancelled) setGamesLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [messages, setMessages] = useState([{
     role: "assistant",
     content: "**NBA Analytics AI online.** I run on 5 cooperative sub-agents:\n\n**DataAgent** — team + player stats, game data, and probabilistic odds\n**AnalyticsAgent** — multi-factor model (net rating, win%, recent form, home/away splits)\n**TrendsAgent** — streaks, O/U trends, strength-of-schedule analysis\n**ParlayAgent** — combined legs with EV calculation\n**InterfaceAgent** — that's me, synthesizing everything\n\nAsk about team stats, player stats, compare teams, view trends, game odds, or build a parlay!"
@@ -1208,9 +1271,32 @@ export default function NBAAnalyticsApp() {
 
           {/* Panel content */}
           <div style={{ flex:1, overflowY:"auto", padding:10 }}>
-            {tab === "games" && games.map(g => (
-              <GameCard key={g.id} game={g} parlaySelections={parlaySelections} onToggle={toggleParlay} />
-            ))}
+            {tab === "games" && (
+              <>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+                  marginBottom:8, padding:"0 2px" }}>
+                  <span style={{ fontSize:10, color: gamesSource === "espn" ? C.green : C.muted,
+                    fontFamily:"'Barlow Condensed',sans-serif", letterSpacing:"0.5px" }}>
+                    {gamesLoading ? "Loading live games..." : gamesSource === "espn" ? "📡 LIVE — ESPN" : "📋 STATIC DATA"}
+                  </span>
+                  {gamesSource === "espn" && (
+                    <button onClick={() => {
+                      setGamesLoading(true);
+                      fetch("/api/games").then(r => r.json()).then(data => {
+                        if (data.games?.length > 0) setGames(DataAgent.parseESPNGames(data.games));
+                      }).catch(() => {}).finally(() => setGamesLoading(false));
+                    }} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:4,
+                      padding:"2px 8px", color:C.muted, fontSize:10, cursor:"pointer",
+                      fontFamily:"'Barlow Condensed',sans-serif" }}>
+                      ↻ REFRESH
+                    </button>
+                  )}
+                </div>
+                {games.map(g => (
+                  <GameCard key={g.id} game={g} parlaySelections={parlaySelections} onToggle={toggleParlay} />
+                ))}
+              </>
+            )}
 
             {tab === "teams" && (
               <>
