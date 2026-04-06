@@ -125,13 +125,13 @@ const DataAgent = {
   },
 
   async searchPlayer(name) {
-    const r = await fetch(`https://www.balldontlie.io/api/v1/players?search=${encodeURIComponent(name)}&per_page=5`);
+    const r = await fetch(`/api/players?search=${encodeURIComponent(name)}`);
     const d = await r.json();
     return d.data || [];
   },
 
   async getStats(playerId) {
-    const r = await fetch(`https://www.balldontlie.io/api/v1/season_averages?season=2024&player_ids[]=${playerId}`);
+    const r = await fetch(`/api/season_averages?player_id=${playerId}`);
     const d = await r.json();
     return d.data[0] || null;
   },
@@ -179,7 +179,7 @@ ${extraContext || ""}
 
 Instructions: Be direct and data-driven. Use the exact numbers from the live data. Format nicely using line breaks. For probabilities mention the model uses net rating + win% + home advantage. Keep responses under 220 words. If asked about parlay additions, tell user to click + next to odds. Don't hallucinate stats not in context.`;
 
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    const resp = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
