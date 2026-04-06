@@ -605,8 +605,70 @@ ${allTrends.length > 0 ? `\n**Active Trends:**\n${allTrends.slice(0, 6).map(t =>
       return "Specify a team (e.g. 'Celtics trends') or ask for 'best trends tonight'.";
     }
 
-    // Parlay query — enhanced with trend info
+    // Parlay query — build or view
     if (q.includes("parlay")) {
+      // Auto-build parlay: "give me a 3 leg parlay" or "build a parlay with 75% chance"
+      const legMatch = q.match(/(\d+)\s*leg/);
+      const probMatch = q.match(/(\d+)\s*%/);
+      const numLegs = legMatch ? parseInt(legMatch[1]) : null;
+      const targetProb = probMatch ? parseInt(probMatch[1]) : null;
+
+      if (numLegs || q.includes("build") || q.includes("give") || q.includes("make") || q.includes("suggest") || q.includes("create")) {
+        const sorted = [...games].sort((a,b) => Math.max(b.homeProb,b.awayProb) - Math.max(a.homeProb,a.awayProb));
+        const legs = numLegs ? Math.min(numLegs, sorted.length) : 3;
+
+        // If target probability, pick legs to get close to that combined prob
+        let picks;
+        if (targetProb) {
+          // Greedy: add favorites until combined prob drops to ~targetProb
+          picks = [];
+          let combinedProb = 1;
+          for (const g of sorted) {
+            if (picks.length >= Math.min(legs, 6)) break;
+            const fav = g.homeProb > g.awayProb;
+            const prob = Math.max(g.homeProb, g.awayProb) / 100;
+            if (combinedProb * prob >= targetProb / 100 * 0.8 || picks.length < legs) {
+              picks.push({ game: g, fav, prob: Math.max(g.homeProb, g.awayProb) });
+              combinedProb *= prob;
+            }
+          }
+          if (picks.length < legs) picks = sorted.slice(0, legs).map(g => ({
+            game: g, fav: g.homeProb > g.awayProb, prob: Math.max(g.homeProb, g.awayProb)
+          }));
+        } else {
+          picks = sorted.slice(0, legs).map(g => ({
+            game: g, fav: g.homeProb > g.awayProb, prob: Math.max(g.homeProb, g.awayProb)
+          }));
+        }
+
+        const combinedProb = picks.reduce((acc, p) => acc * (p.prob / 100), 1);
+        const combinedDecimal = picks.reduce((acc, p) => {
+          const odds = p.fav ? p.game.homeOddsRaw : p.game.awayOddsRaw;
+          return acc * AnalyticsAgent.toDecimal(odds);
+        }, 1);
+        const combinedAmerican = combinedDecimal >= 2
+          ? `+${Math.round((combinedDecimal - 1) * 100)}`
+          : `-${Math.round(100 / (combinedDecimal - 1))}`;
+
+        return `🎰 **Suggested ${picks.length}-Leg Parlay${targetProb ? ` (~${targetProb}% target)` : ""}:**
+
+${picks.map((p, i) => {
+  const abbr = p.fav ? (p.game.homeProb > p.game.awayProb ? p.game.homeAbbr : p.game.awayAbbr) : (p.game.homeProb <= p.game.awayProb ? p.game.homeAbbr : p.game.awayAbbr);
+  const odds = p.fav ? (p.game.homeProb > p.game.awayProb ? p.game.homeOdds : p.game.awayOdds) : (p.game.homeProb <= p.game.awayProb ? p.game.homeOdds : p.game.awayOdds);
+  const opp = p.fav ? (p.game.homeProb > p.game.awayProb ? p.game.awayAbbr : p.game.homeAbbr) : (p.game.homeProb <= p.game.awayProb ? p.game.awayAbbr : p.game.homeAbbr);
+  return `**Leg ${i+1}:** ${abbr} ML ${odds} (${p.prob}%) vs ${opp}`;
+}).join("\n")}
+
+**Combined Odds:** ${combinedAmerican} (${combinedDecimal.toFixed(2)}x)
+**Combined Win Prob:** ${(combinedProb * 100).toFixed(1)}%
+**$100 Payout:** $${(combinedDecimal * 100).toFixed(2)}
+
+${combinedProb > 0.5 ? "High-confidence parlay — lower payout but solid probability." : combinedProb > 0.25 ? "Moderate risk parlay — decent payout with reasonable odds." : "Long-shot parlay — big payout but lower probability. Proceed with caution."}
+
+To lock this in, click the + buttons on each team's odds in the GAMES tab.`;
+      }
+
+      // View existing parlay
       if (parlayState.selections.length > 0 && parlayState.result) {
         let trendNotes = "";
         for (const sel of parlayState.selections) {
@@ -629,7 +691,7 @@ ${trendNotes ? `\n**TrendsAgent Notes:**${trendNotes}` : ""}
 
 ${parseFloat(parlayState.result.ev) > 0 ? "Positive EV — model suggests value here." : "Negative EV — proceed with caution."}`;
       }
-      return "No active parlay. Click the + button next to any game odds to add selections, then check the PARLAY tab.";
+      return "No active parlay. Click the + button next to any game odds to add selections, then check the PARLAY tab.\n\nOr try: **\"build me a 3 leg parlay\"** or **\"give me a parlay with 60% chance\"**";
     }
 
     // Game matchup query
@@ -689,8 +751,98 @@ Model weights: Net Rating 30% | Win% 25% | Recent Form 15% | Home/Away Splits 15
       }).join("\n")}`;
     }
 
-    // Default / help — updated with new capabilities
-    return `I can help with:\n\n• **Game analysis** — "Rockets vs Warriors" or "Celtics game"\n• **Team stats** — "team stats Nuggets" or "stats BOS"\n• **Compare teams** — "compare Lakers vs Celtics"\n• **Team trends** — "Celtics trends" or "best trends tonight"\n• **Player stats** — "LeBron James stats" or "tell me about Curry"\n• **Rankings** — "team rankings" or "best teams"\n• **Best picks** — "best bets tonight" or "safest pick"\n• **All games** — "show all games" or "tonight's schedule"\n• **Odds** — "odds for Lakers game" or "all spreads"\n• **Parlay** — "show my parlay" (add picks with + buttons)\n\nTry asking about a specific matchup or team!`;
+    // Who wins / predict — "who wins tonight", "predict the games"
+    if (q.includes("who win") || q.includes("who's going to win") || q.includes("predict") || q.includes("winner") || q.includes("pick the winner")) {
+      return `🔮 **Predictions for Tonight** (multi-factor model):\n\n${games.map(g => {
+        const fav = g.homeProb > g.awayProb;
+        const favAbbr = fav ? g.homeAbbr : g.awayAbbr;
+        const favProb = Math.max(g.homeProb, g.awayProb);
+        const favOdds = fav ? g.homeOdds : g.awayOdds;
+        const conf = favProb >= 65 ? "🔒" : favProb >= 55 ? "📈" : "⚖️";
+        return `${conf} **${favAbbr}** wins vs ${fav ? g.awayAbbr : g.homeAbbr} — ${favProb}% (${favOdds})`;
+      }).join("\n")}\n\n🔒 = High confidence | 📈 = Moderate | ⚖️ = Toss-up`;
+    }
+
+    // Upset / underdog picks — "any upsets", "underdog picks"
+    if (q.includes("upset") || q.includes("underdog") || q.includes("long shot") || q.includes("sleeper")) {
+      const underdogs = games.filter(g => {
+        const udProb = Math.min(g.homeProb, g.awayProb);
+        return udProb >= 30 && udProb <= 48;
+      }).sort((a,b) => Math.min(b.homeProb,b.awayProb) - Math.min(a.homeProb,a.awayProb));
+
+      if (!underdogs.length) return "No strong upset candidates tonight — favorites are heavily favored across the board.";
+
+      return `🎯 **Upset Watch — Best Underdog Picks:**\n\n${underdogs.slice(0,4).map(g => {
+        const udHome = g.homeProb < g.awayProb;
+        const udAbbr = udHome ? g.homeAbbr : g.awayAbbr;
+        const udProb = Math.min(g.homeProb, g.awayProb);
+        const udOdds = udHome ? g.homeOdds : g.awayOdds;
+        const favAbbr = udHome ? g.awayAbbr : g.homeAbbr;
+        const tdData = DataAgent.findTeam(udAbbr);
+        const streak = tdData?.streak || "";
+        return `• **${udAbbr}** ${udOdds} (${udProb}%) vs ${favAbbr}${streak.startsWith("W") ? ` — ${streak} streak 🔥` : ""}`;
+      }).join("\n")}\n\nThese underdogs have a realistic path. Great for plus-money value.`;
+    }
+
+    // Defense / offense questions — "best defense", "who scores the most"
+    if (q.includes("best defense") || q.includes("worst defense") || q.includes("best offense") || q.includes("worst offense") || q.includes("most points") || q.includes("least points")) {
+      const teams = Object.entries(DataAgent.teams);
+      if (q.includes("defense") || q.includes("least points")) {
+        const sorted = teams.sort((a,b) => (q.includes("worst") ? -1 : 1) * ((a[1].defRtg || a[1].oppPpg) - (b[1].defRtg || b[1].oppPpg)));
+        const label = q.includes("worst") ? "Worst Defenses" : "Best Defenses";
+        return `🛡️ **${label}** (by Defensive Rating):\n\n${sorted.slice(0,8).map(([n,t],i) => `${i+1}. **${t.abbr}** — DRtg: ${(t.defRtg||t.oppPpg).toFixed(1)} | Opp PPG: ${t.oppPpg}`).join("\n")}`;
+      }
+      const sorted = teams.sort((a,b) => (q.includes("worst") ? 1 : -1) * ((a[1].offRtg || a[1].ppg) - (b[1].offRtg || b[1].ppg)));
+      const label = q.includes("worst") ? "Worst Offenses" : "Best Offenses";
+      return `🏀 **${label}** (by Offensive Rating):\n\n${sorted.slice(0,8).map(([n,t],i) => `${i+1}. **${t.abbr}** — ORtg: ${(t.offRtg||t.ppg).toFixed(1)} | PPG: ${t.ppg}`).join("\n")}`;
+    }
+
+    // How many games / count
+    if (q.includes("how many game")) {
+      return `There are **${games.length} games** on tonight's schedule:\n\n${games.map(g => `• ${g.awayAbbr} @ ${g.homeAbbr} — ${g.time}`).join("\n")}`;
+    }
+
+    // Closest / tightest game
+    if (q.includes("closest") || q.includes("tightest") || q.includes("most competitive") || q.includes("coin flip")) {
+      const sorted = [...games].sort((a,b) => Math.abs(a.homeProb - 50) - Math.abs(b.homeProb - 50));
+      const top = sorted.slice(0, 3);
+      return `⚖️ **Closest Games Tonight:**\n\n${top.map(g => `• ${g.awayAbbr} @ ${g.homeAbbr} — ${g.homeAbbr} ${g.homeProb}% vs ${g.awayAbbr} ${g.awayProb}% | Spread: ${g.spread}`).join("\n")}\n\nThese are near coin-flip matchups — great for undecided bettors.`;
+    }
+
+    // Blowout / easiest game
+    if (q.includes("blowout") || q.includes("biggest favorite") || q.includes("easiest") || q.includes("most lopsided")) {
+      const sorted = [...games].sort((a,b) => Math.max(b.homeProb,b.awayProb) - Math.max(a.homeProb,a.awayProb));
+      const top = sorted.slice(0, 3);
+      return `💪 **Biggest Favorites Tonight:**\n\n${top.map(g => {
+        const fav = g.homeProb > g.awayProb;
+        return `• **${fav ? g.homeAbbr : g.awayAbbr}** ${Math.max(g.homeProb,g.awayProb)}% (${fav ? g.homeOdds : g.awayOdds}) vs ${fav ? g.awayAbbr : g.homeAbbr} | Spread: ${g.spread}`;
+      }).join("\n")}`;
+    }
+
+    // Smart fallback: try to find any team mention in the query
+    for (const word of q.split(/\s+/)) {
+      if (word.length >= 3) {
+        const td = DataAgent.findTeam(word);
+        if (td) {
+          // Check if they have a game today
+          const teamGame = games.find(g => g.homeAbbr === td.abbr || g.awayAbbr === td.abbr);
+          if (teamGame) return this.formatGameAnalysis(teamGame);
+          // Otherwise show team stats
+          const stats = DataAgent.getTeamStats(word);
+          if (stats) return this.formatTeamStats(stats);
+        }
+      }
+    }
+
+    // Final smart fallback: try player name (two capitalized words)
+    const twoWords = userMsg.match(/([A-Z][a-z]+)\s+([A-Z][a-z]+)/);
+    if (twoWords) {
+      const pData = DataAgent.getPlayerStats(twoWords[0]);
+      if (pData) return `📊 ${pData.name} — ${pData.team} (${pData.position})\n2024-25 Season: ${pData.pts} PPG | ${pData.reb} RPG | ${pData.ast} APG\n🎯 FG: ${pData.fg} | 3P: ${pData.fg3} | FT: ${pData.ft}\n🛡️ ${pData.stl} SPG | ${pData.blk} BPG`;
+    }
+
+    // Default / help
+    return `I can help with:\n\n• **Game analysis** — "Rockets vs Warriors" or "Celtics game"\n• **Team stats** — "team stats Nuggets" or "stats BOS"\n• **Compare teams** — "compare Lakers vs Celtics"\n• **Team trends** — "Celtics trends" or "best trends tonight"\n• **Player stats** — "LeBron James stats"\n• **Build parlays** — "give me a 3 leg parlay" or "build a parlay with 60% chance"\n• **Predictions** — "who wins tonight" or "predict the games"\n• **Upsets** — "any upsets tonight" or "underdog picks"\n• **Rankings** — "team rankings" or "best defense"\n• **Best picks** — "best bets tonight" or "safest pick"\n• **Close games** — "closest games tonight" or "coin flip"\n\nTry asking anything about NBA!`;
   },
 };
 
