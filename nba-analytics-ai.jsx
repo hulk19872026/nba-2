@@ -1345,19 +1345,39 @@ export default function NBAAnalyticsApp() {
     else { setComparisonData(null); setTeamError("Could not find one or both teams. Try abbreviations like BOS, LAL, OKC."); }
   };
 
-  const sendMessage = (text) => {
+  const sendMessage = async (text) => {
     const q = text || input.trim();
     if (!q || loading) return;
     setInput("");
     setMessages(prev => [...prev, { role:"user", content:q }]);
     setLoading(true);
 
-    setTimeout(() => {
-      const reply = InterfaceAgent.query(q, games,
-        { selections: parlaySelections, result: parlayResult });
-      setMessages(prev => [...prev, { role:"assistant", content:reply }]);
+    // Try local engine first
+    const localReply = InterfaceAgent.query(q, games,
+      { selections: parlaySelections, result: parlayResult });
+
+    // If local engine returned the help/default text, search the web instead
+    if (localReply.startsWith("I can help with:")) {
+      try {
+        const resp = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const data = await resp.json();
+        if (data.answer) {
+          setMessages(prev => [...prev, { role:"assistant",
+            content: `🔍 **Web Search Results** for "${q}":\n\n${data.answer}\n\n—\n*Source: web search. For analytics, try asking about a specific team or matchup.*` }]);
+          setLoading(false);
+          return;
+        }
+      } catch {}
+      // Web search failed — show default help
+      setMessages(prev => [...prev, { role:"assistant", content: localReply }]);
       setLoading(false);
-    }, 300 + Math.random() * 400);
+    } else {
+      // Local engine handled it
+      setTimeout(() => {
+        setMessages(prev => [...prev, { role:"assistant", content: localReply }]);
+        setLoading(false);
+      }, 200 + Math.random() * 300);
+    }
   };
 
   const SUGGESTIONS = [

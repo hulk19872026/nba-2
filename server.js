@@ -129,6 +129,136 @@ app.get("/api/games", async (req, res) => {
   }
 });
 
+// Web search proxy for NBA questions
+app.get("/api/search", async (req, res) => {
+  const query = req.query.q;
+  if (!query) return res.json({ answer: null });
+
+  try {
+    // Use Google's custom search or a scraping approach
+    const searchQuery = encodeURIComponent(`NBA ${query}`);
+
+    // Try multiple search sources
+    let snippets = [];
+
+    // Source 1: Google search via HTML scraping
+    try {
+      const googleResp = await fetch(`https://www.google.com/search?q=${searchQuery}&num=5`, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "text/html",
+          "Accept-Language": "en-US,en;q=0.9",
+        },
+      });
+      if (googleResp.ok) {
+        const html = await googleResp.text();
+        // Extract text snippets from search results
+        const snippetMatches = html.match(/(?:class="BNeawe[^"]*"[^>]*>)([^<]{30,300})/g);
+        if (snippetMatches) {
+          snippets = snippetMatches
+            .map(m => m.replace(/class="[^"]*"[^>]*>/g, "").trim())
+            .filter(s => s.length > 30 && !s.includes("{") && !s.includes("function"))
+            .slice(0, 6);
+        }
+        // Also try featured snippet / answer box patterns
+        const featuredMatch = html.match(/class="hgKElc"[^>]*>([^<]+)/);
+        if (featuredMatch) snippets.unshift(featuredMatch[1].trim());
+
+        // Try data-md patterns (knowledge panel)
+        const kpMatches = html.match(/data-md="[^"]*"[^>]*>([^<]{10,200})/g);
+        if (kpMatches) {
+          kpMatches.forEach(m => {
+            const text = m.replace(/data-md="[^"]*"[^>]*>/g, "").trim();
+            if (text.length > 10) snippets.push(text);
+          });
+        }
+      }
+    } catch {}
+
+    // Source 2: DuckDuckGo instant answer API (simpler, more reliable)
+    if (snippets.length < 2) {
+      try {
+        const ddgResp = await fetch(`https://api.duckduckgo.com/?q=${searchQuery}&format=json&no_html=1`);
+        if (ddgResp.ok) {
+          const ddg = await ddgResp.json();
+          if (ddg.Abstract) snippets.push(ddg.Abstract);
+          if (ddg.Answer) snippets.unshift(ddg.Answer);
+          if (ddg.RelatedTopics) {
+            ddg.RelatedTopics.slice(0, 3).forEach(t => {
+              if (t.Text) snippets.push(t.Text);
+            });
+          }
+        }
+      } catch {}
+    }
+
+    // Source 3: ESPN search for game-specific queries
+    if (snippets.length < 2 && /game|score|play|schedule|april|march|today|tomorrow/i.test(query)) {
+      try {
+        // Try ESPN scoreboard for dates
+        const dateMatch = query.match(/(?:april|mar|march|feb|january|may)\s*(\d{1,2})/i);
+        if (dateMatch) {
+          const monthMap = { jan: "01", feb: "02", mar: "03", march: "03", april: "04", apr: "04", may: "05" };
+          const monthWord = query.match(/(january|february|march|april|may|jan|feb|mar|apr)/i)?.[1]?.toLowerCase();
+          const month = monthMap[monthWord] || "04";
+          const day = dateMatch[1].padStart(2, "0");
+          const year = new Date().getFullYear();
+          const espnUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${year}${month}${day}`;
+          const espnResp = await fetch(espnUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (compatible; NBAAnalytics/1.0)" },
+          });
+          if (espnResp.ok) {
+            const espnData = await espnResp.json();
+            const events = espnData.events || [];
+            if (events.length > 0) {
+              const gameList = events.map(ev => {
+                const comp = ev.competitions?.[0];
+                const home = comp?.competitors?.find(c => c.homeAway === "home");
+                const away = comp?.competitors?.find(c => c.homeAway === "away");
+                const status = ev.status?.type?.shortDetail || "";
+                const homeName = home?.team?.displayName || "";
+                const awayName = away?.team?.displayName || "";
+                const homeScore = home?.score || "";
+                const awayScore = away?.score || "";
+                if (status.includes("Final")) {
+                  return `${awayName} ${awayScore} @ ${homeName} ${homeScore} (Final)`;
+                }
+                const time = new Date(ev.date).toLocaleTimeString("en-US", {
+                  hour: "numeric", minute: "2-digit", timeZone: "America/New_York"
+                }) + " ET";
+                return `${awayName} @ ${homeName} — ${status || time}`;
+              });
+              snippets.unshift(`Games: ${gameList.join(" | ")}`);
+            }
+          }
+        }
+      } catch {}
+    }
+
+    if (snippets.length === 0) {
+      return res.json({ answer: null });
+    }
+
+    // Deduplicate and clean
+    const seen = new Set();
+    const cleaned = snippets.filter(s => {
+      const key = s.slice(0, 50).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 5);
+
+    res.json({
+      answer: cleaned.join("\n\n"),
+      snippetCount: cleaned.length,
+      query: query,
+    });
+  } catch (err) {
+    console.error("Search error:", err.message);
+    res.json({ answer: null });
+  }
+});
+
 // SPA fallback
 app.get("*", (req, res) => {
   res.sendFile(join(__dirname, "dist", "index.html"));
