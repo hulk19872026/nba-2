@@ -11,11 +11,12 @@ const injectFonts = () => {
   style.textContent = `
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
     @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes slideUp { from{opacity:0;transform:translateY(100%)} to{opacity:1;transform:translateY(0)} }
     @keyframes spin { to{transform:rotate(360deg)} }
     @keyframes typingDot { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
     .msg-enter { animation: fadeIn 0.25s ease-out; }
     .dot-pulse { animation: pulse 1.8s ease-in-out infinite; }
-    ::-webkit-scrollbar { width: 4px; } 
+    ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: #0a101f; }
     ::-webkit-scrollbar-thumb { background: #1e2d48; border-radius:2px; }
     .game-card:hover { border-color: #F5A623 !important; background: #0f1826 !important; }
@@ -23,6 +24,98 @@ const injectFonts = () => {
     .send-btn:hover:not(:disabled) { background: #d4921e !important; }
     .tab-btn:hover { background: #141e33 !important; }
     .suggestion-btn:hover { border-color: #F5A623 !important; color: #F5A623 !important; }
+    .nba-bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 64px;
+      background: #0C1424;
+      border-top: 1px solid #1A2B44;
+      z-index: 100;
+      align-items: stretch;
+    }
+    .nba-bottom-nav-btn {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      min-height: 44px;
+      padding: 6px 0;
+      transition: background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nba-bottom-nav-btn:active { background: rgba(245,166,35,0.08); }
+    .nba-bottom-nav-icon { font-size: 20px; line-height: 1; }
+    .nba-bottom-nav-label {
+      font-family: 'Barlow Condensed', sans-serif;
+      font-size: 10px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .nba-chat-fab {
+      display: none;
+      position: fixed;
+      bottom: 76px;
+      right: 16px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: #F5A623;
+      border: none;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      z-index: 99;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      transition: transform 0.15s, box-shadow 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .nba-chat-fab:active { transform: scale(0.93); box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+    .nba-chat-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      flex-direction: column;
+      background: #070D1A;
+      animation: slideUp 0.28s ease-out;
+    }
+    .nba-chat-overlay.open { display: flex; }
+    .nba-mobile-panel {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 150;
+      flex-direction: column;
+      background: #070D1A;
+      overflow: hidden;
+      animation: slideUp 0.25s ease-out;
+    }
+    .nba-mobile-panel.open { display: flex; }
+    @media (max-width: 768px) {
+      .nba-bottom-nav { display: flex; }
+      .nba-chat-fab { display: flex; }
+      .nba-desktop-sidebar { display: none !important; }
+      .nba-desktop-chat { display: none !important; }
+      .nba-mobile-content { display: flex !important; }
+      .nba-pipeline-bar { display: none !important; }
+      .nba-header-agents { display: none !important; }
+      .nba-header-title { font-size: 18px !important; }
+      .nba-header-sub { display: none !important; }
+      .nba-body { padding-bottom: 64px; }
+    }
+    @media (min-width: 769px) {
+      .nba-mobile-content { display: none !important; }
+      .nba-chat-fab { display: none !important; }
+      .nba-bottom-nav { display: none !important; }
+    }
+    * { box-sizing: border-box; }
   `;
   document.head.appendChild(style);
 };
@@ -1174,6 +1267,18 @@ const C = {
   text: "#E8ECF0", muted: "#6B7FA3", dim: "#3D4F6B",
 };
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
 function AgentBadge({ name, color = C.accent }) {
   return (
     <span style={{ display:"flex", alignItems:"center", gap:5, fontSize:11,
@@ -1567,11 +1672,13 @@ function ChatMessage({ msg }) {
 // ════════════════════════════════════════════════
 export default function NBAAnalyticsApp() {
   useEffect(() => { injectFonts(); }, []);
+  const isMobile = useIsMobile();
 
   const [games, setGames] = useState(() => DataAgent.buildStaticGames());
   const [gamesSource, setGamesSource] = useState("static");
   const [gamesLoading, setGamesLoading] = useState(true);
   const [tab, setTab] = useState("games");
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Fetch live games from ESPN via backend
   useEffect(() => {
@@ -1739,31 +1846,41 @@ export default function NBAAnalyticsApp() {
 
       {/* ── HEADER ── */}
       <header style={{ background:C.panel, borderBottom:`2px solid ${C.accent}`,
-        padding:"10px 16px", display:"flex", alignItems:"center", justifyContent:"space-between",
-        flexShrink:0 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <div style={{ width:36, height:36, borderRadius:8, background:C.accent,
-            display:"flex", alignItems:"center", justifyContent:"center",
-            fontFamily:"'Bebas Neue',sans-serif", fontSize:18, color:"#000" }}>NBA</div>
+        padding: isMobile ? "8px 12px" : "10px 16px", display:"flex", alignItems:"center",
+        justifyContent:"space-between", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"center", gap: isMobile ? 8 : 12 }}>
+          <div style={{ width: isMobile ? 30 : 36, height: isMobile ? 30 : 36, borderRadius:8,
+            background:C.accent, display:"flex", alignItems:"center", justifyContent:"center",
+            fontFamily:"'Bebas Neue',sans-serif", fontSize: isMobile ? 14 : 18, color:"#000" }}>NBA</div>
           <div>
-            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:22, lineHeight:1,
-              letterSpacing:"2px", color:C.text }}>NBA ANALYTICS AI</div>
-            <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:11,
-              color:C.muted, letterSpacing:"1px" }}>MULTI-AGENT INTELLIGENCE SYSTEM</div>
+            <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize: isMobile ? 16 : 22,
+              lineHeight:1, letterSpacing:"2px", color:C.text }}>NBA ANALYTICS AI</div>
+            {!isMobile && <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:11,
+              color:C.muted, letterSpacing:"1px" }}>MULTI-AGENT INTELLIGENCE SYSTEM</div>}
           </div>
         </div>
-        <div style={{ display:"flex", gap:16 }}>
-          {["QueryAgent","DataAgent","AnalyticsAgent","TrendsAgent","ParlayAgent","WebSearch","InterfaceAgent"].map(a => (
-            <AgentBadge key={a} name={a} />
-          ))}
-        </div>
+        {!isMobile && (
+          <div style={{ display:"flex", gap:16 }}>
+            {["QueryAgent","DataAgent","AnalyticsAgent","TrendsAgent","ParlayAgent","WebSearch","InterfaceAgent"].map(a => (
+              <AgentBadge key={a} name={a} />
+            ))}
+          </div>
+        )}
+        {isMobile && (
+          <span style={{ fontSize:10, color: gamesSource === "espn" ? C.green : C.muted,
+            fontFamily:"'Barlow Condensed',sans-serif" }}>
+            {gamesSource === "espn" ? "📡 LIVE" : "📋 STATIC"}
+          </span>
+        )}
       </header>
 
       {/* ── BODY ── */}
-      <div style={{ display:"flex", flex:1, overflow:"hidden" }}>
+      <div style={{ display:"flex", flex:1, overflow:"hidden",
+        paddingBottom: isMobile ? 64 : 0 }}>
 
-        {/* ── SIDEBAR ── */}
-        <aside style={{ width:300, background:C.panel, borderRight:`1px solid ${C.border}`,
+        {/* ── SIDEBAR (desktop) / MAIN CONTENT (mobile) ── */}
+        <aside style={{ width: isMobile ? "100%" : 300, background: isMobile ? C.bg : C.panel,
+          borderRight: isMobile ? "none" : `1px solid ${C.border}`,
           display:"flex", flexDirection:"column", flexShrink:0, overflow:"hidden" }}>
 
           {/* Tabs */}
@@ -1935,8 +2052,8 @@ export default function NBAAnalyticsApp() {
           </div>
         </aside>
 
-        {/* ── CHAT PANEL ── */}
-        <main style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        {/* ── CHAT PANEL (desktop only, or mobile overlay) ── */}
+        <main style={{ flex:1, display: isMobile ? "none" : "flex", flexDirection:"column", overflow:"hidden" }}>
 
           {/* Agent pipeline indicator */}
           <div style={{ borderBottom:`1px solid ${C.border}`, padding:"6px 16px",
@@ -2013,6 +2130,103 @@ export default function NBAAnalyticsApp() {
             </div>
           </div>
         </main>
+      </div>
+
+      {/* ── MOBILE: Bottom Navigation ── */}
+      <nav className="nba-bottom-nav">
+        {[
+          { id:"games", icon:"🏠", label:"Home" },
+          { id:"teams", icon:"🏀", label:"Teams" },
+          { id:"stats", icon:"👤", label:"Players" },
+          { id:"parlay", icon:"🎰", label:`Parlay${parlaySelections.length > 0 ? ` (${parlaySelections.length})` : ""}` },
+        ].map(item => (
+          <button key={item.id} className="nba-bottom-nav-btn"
+            onClick={() => { setTab(item.id); setChatOpen(false); }}>
+            <span className="nba-bottom-nav-icon">{item.icon}</span>
+            <span className="nba-bottom-nav-label"
+              style={{ color: tab === item.id && !chatOpen ? C.accent : C.muted }}>{item.label}</span>
+          </button>
+        ))}
+      </nav>
+
+      {/* ── MOBILE: Floating Chat Button ── */}
+      <button className="nba-chat-fab" onClick={() => setChatOpen(true)}
+        aria-label="Open AI Chat">
+        💬
+      </button>
+
+      {/* ── MOBILE: Chat Overlay ── */}
+      <div className={`nba-chat-overlay ${chatOpen ? "open" : ""}`}>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
+          padding:"12px 16px", borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <div style={{ width:24, height:24, borderRadius:6, background:C.accent,
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontFamily:"'Bebas Neue',sans-serif", fontSize:12, color:"#000" }}>AI</div>
+            <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, color:C.text,
+              letterSpacing:"1px" }}>NBA ANALYTICS AI</span>
+          </div>
+          <button onClick={() => setChatOpen(false)}
+            style={{ background:"transparent", border:"none", color:C.muted, fontSize:24,
+              cursor:"pointer", padding:"4px 8px", minHeight:44, minWidth:44,
+              display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex:1, overflowY:"auto", padding:"12px 16px", WebkitOverflowScrolling:"touch" }}>
+          {messages.map((m, i) => <ChatMessage key={i} msg={m} />)}
+          {loading && (
+            <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-start", marginBottom:12 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:4 }}>
+                <div style={{ width:20, height:20, borderRadius:4, background:C.accent,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:11, fontWeight:700, color:"#000", fontFamily:"'Bebas Neue',sans-serif" }}>AI</div>
+                <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:11,
+                  color:C.muted }}>thinking...</span>
+              </div>
+              <div style={{ background:C.card, border:`1px solid ${C.border}`,
+                borderRadius:"4px 14px 14px 14px" }}>
+                <TypingIndicator />
+              </div>
+            </div>
+          )}
+          <div ref={messagesEnd} />
+        </div>
+
+        {/* Quick prompts */}
+        <div style={{ padding:"6px 12px", display:"flex", gap:6, flexWrap:"wrap",
+          borderTop:`1px solid ${C.border}`, flexShrink:0 }}>
+          {["Best bet tonight","Who wins?","Build a parlay","Lakers game"].map(s => (
+            <button key={s} className="suggestion-btn" onClick={() => sendMessage(s)}
+              style={{ background:"transparent", border:`1px solid ${C.border}`,
+                borderRadius:20, padding:"6px 14px", cursor:"pointer", fontSize:13,
+                color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
+                minHeight:36 }}>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Input */}
+        <div style={{ padding:"8px 12px", paddingBottom:"max(8px, env(safe-area-inset-bottom))", flexShrink:0 }}>
+          <div style={{ display:"flex", gap:8, background:C.card,
+            border:`1px solid ${C.border}`, borderRadius:10, padding:"4px 4px 4px 14px" }}>
+            <input value={input} onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && sendMessage()}
+              placeholder="Ask anything about NBA..."
+              disabled={loading}
+              style={{ flex:1, background:"transparent", border:"none", outline:"none",
+                color:C.text, fontSize:16, fontFamily:"'Barlow Condensed',sans-serif",
+                padding:"8px 0", minHeight:44 }} />
+            <button className="send-btn" onClick={() => sendMessage()} disabled={loading}
+              style={{ background: loading ? C.dim : C.accent, border:"none", borderRadius:7,
+                padding:"10px 20px", cursor: loading ? "not-allowed" : "pointer",
+                fontFamily:"'Bebas Neue',sans-serif", fontSize:15, letterSpacing:"1px",
+                color:"#000", flexShrink:0, minHeight:44 }}>
+              {loading ? "..." : "SEND"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
