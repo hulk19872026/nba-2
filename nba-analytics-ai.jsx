@@ -1641,6 +1641,400 @@ function ComparisonView({ t1, t2 }) {
   );
 }
 
+// ════════════════════════════════════════════════
+// CHART COMPONENTS (pure SVG — zero dependencies)
+// ════════════════════════════════════════════════
+
+function BarChart({ data, height = 140, barColor = C.accent }) {
+  const maxVal = Math.max(...data.map(d => d.value), 1);
+  const barW = Math.min(36, Math.floor((280 - data.length * 4) / data.length));
+  const chartW = data.length * (barW + 4);
+  return (
+    <div style={{ overflowX:"auto", WebkitOverflowScrolling:"touch" }}>
+      <svg width={chartW} height={height + 28} style={{ display:"block" }}>
+        {data.map((d, i) => {
+          const barH = (d.value / maxVal) * height;
+          const x = i * (barW + 4);
+          return (
+            <g key={d.label}>
+              <rect x={x} y={height - barH} width={barW} height={barH} rx={3}
+                fill={d.color || barColor} opacity={0.85} />
+              <text x={x + barW/2} y={height - barH - 4} textAnchor="middle"
+                fill={C.text} fontSize={10} fontFamily="'JetBrains Mono',monospace"
+                fontWeight={600}>{d.value}</text>
+              <text x={x + barW/2} y={height + 14} textAnchor="middle"
+                fill={C.muted} fontSize={9} fontFamily="'Barlow Condensed',sans-serif">{d.label}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function RadarChart({ data, size = 200 }) {
+  const cx = size / 2, cy = size / 2, r = size / 2 - 30;
+  const n = data.length;
+  const angle = (i) => (Math.PI * 2 * i / n) - Math.PI / 2;
+  const point = (i, pct) => ({
+    x: cx + r * pct * Math.cos(angle(i)),
+    y: cy + r * pct * Math.sin(angle(i)),
+  });
+  const gridLevels = [0.25, 0.5, 0.75, 1.0];
+  const pts = data.map((d, i) => point(i, d.pct));
+  const polyPoints = pts.map(p => `${p.x},${p.y}`).join(" ");
+
+  return (
+    <svg width={size} height={size} style={{ display:"block", margin:"0 auto" }}>
+      {gridLevels.map(lv => (
+        <polygon key={lv}
+          points={Array.from({length:n}, (_, i) => point(i, lv)).map(p => `${p.x},${p.y}`).join(" ")}
+          fill="none" stroke={C.border} strokeWidth={1} opacity={0.5} />
+      ))}
+      {data.map((_, i) => (
+        <line key={i} x1={cx} y1={cy} x2={point(i, 1).x} y2={point(i, 1).y}
+          stroke={C.border} strokeWidth={0.5} opacity={0.4} />
+      ))}
+      <polygon points={polyPoints} fill={C.accent} fillOpacity={0.2}
+        stroke={C.accent} strokeWidth={2} />
+      {pts.map((p, i) => (
+        <circle key={i} cx={p.x} cy={p.y} r={3.5} fill={C.accent} />
+      ))}
+      {data.map((d, i) => {
+        const lp = point(i, 1.2);
+        return (
+          <text key={i} x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="middle"
+            fill={C.muted} fontSize={9} fontFamily="'Barlow Condensed',sans-serif">
+            {d.label}
+          </text>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ShotBreakdownChart({ fg, fg3, ft, size = 180 }) {
+  const fgVal = parseFloat(fg) || 0;
+  const fg3Val = parseFloat(fg3) || 0;
+  const ftVal = parseFloat(ft) || 0;
+  const total = fgVal + fg3Val + ftVal || 1;
+  const segments = [
+    { label:"FG%", pct:fgVal/total, color:C.accent, value:fgVal },
+    { label:"3P%", pct:fg3Val/total, color:C.green, value:fg3Val },
+    { label:"FT%", pct:ftVal/total, color:C.blue, value:ftVal },
+  ];
+  const cx = size/2, cy = size/2, r = size/2 - 10, inner = r * 0.55;
+  let cumAngle = -Math.PI/2;
+
+  return (
+    <div style={{ textAlign:"center" }}>
+      <svg width={size} height={size} style={{ display:"block", margin:"0 auto" }}>
+        {segments.map((seg) => {
+          const startAngle = cumAngle;
+          const sweep = seg.pct * Math.PI * 2;
+          cumAngle += sweep;
+          const x1 = cx + r * Math.cos(startAngle);
+          const y1 = cy + r * Math.sin(startAngle);
+          const x2 = cx + r * Math.cos(startAngle + sweep);
+          const y2 = cy + r * Math.sin(startAngle + sweep);
+          const ix1 = cx + inner * Math.cos(startAngle);
+          const iy1 = cy + inner * Math.sin(startAngle);
+          const ix2 = cx + inner * Math.cos(startAngle + sweep);
+          const iy2 = cy + inner * Math.sin(startAngle + sweep);
+          const large = sweep > Math.PI ? 1 : 0;
+          const d = `M${ix1},${iy1} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} L${ix2},${iy2} A${inner},${inner} 0 ${large} 0 ${ix1},${iy1}`;
+          return <path key={seg.label} d={d} fill={seg.color} opacity={0.8} />;
+        })}
+        <text x={cx} y={cy-6} textAnchor="middle" fill={C.text} fontSize={12}
+          fontFamily="'Bebas Neue',sans-serif" letterSpacing="1px">SHOT</text>
+        <text x={cx} y={cy+8} textAnchor="middle" fill={C.muted} fontSize={10}
+          fontFamily="'Barlow Condensed',sans-serif">SPLIT</text>
+      </svg>
+      <div style={{ display:"flex", justifyContent:"center", gap:12, marginTop:6 }}>
+        {segments.map(s => (
+          <div key={s.label} style={{ display:"flex", alignItems:"center", gap:4 }}>
+            <div style={{ width:8, height:8, borderRadius:2, background:s.color }} />
+            <span style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif" }}>
+              {s.label} {s.value}%
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MiniGauge({ value, max, label, color = C.accent }) {
+  const pct = Math.min(value / max, 1);
+  return (
+    <div style={{ textAlign:"center" }}>
+      <svg width={70} height={44} style={{ display:"block", margin:"0 auto" }}>
+        <path d={`M10,38 A25,25 0 0 1 60,38`} fill="none" stroke={C.border} strokeWidth={5} strokeLinecap="round" />
+        <path d={`M10,38 A25,25 0 0 1 60,38`} fill="none" stroke={color} strokeWidth={5} strokeLinecap="round"
+          strokeDasharray={`${pct * 78.5} 78.5`} />
+        <text x={35} y={34} textAnchor="middle" fill={C.text} fontSize={13}
+          fontFamily="'JetBrains Mono',monospace" fontWeight={600}>{value}</text>
+      </svg>
+      <div style={{ fontSize:9, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif", marginTop:2 }}>{label}</div>
+    </div>
+  );
+}
+
+function PlayerChartCard({ stats }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!stats) return null;
+
+  const pts = parseFloat(stats.pts) || 0;
+  const reb = parseFloat(stats.reb) || 0;
+  const ast = parseFloat(stats.ast) || 0;
+  const stl = parseFloat(stats.stl) || 0;
+  const blk = parseFloat(stats.blk) || 0;
+  const fg = parseFloat(stats.fg) || 0;
+  const fg3 = parseFloat(stats.fg3) || 0;
+  const ft = parseFloat(stats.ft) || 0;
+
+  const barData = [
+    { label:"PTS", value:pts, color:C.accent },
+    { label:"REB", value:reb, color:C.blue },
+    { label:"AST", value:ast, color:C.green },
+    { label:"STL", value:stl, color:"#FF9800" },
+    { label:"BLK", value:blk, color:"#9C27B0" },
+  ];
+
+  const radarData = [
+    { label:"PTS", pct:Math.min(pts/35, 1) },
+    { label:"REB", pct:Math.min(reb/15, 1) },
+    { label:"AST", pct:Math.min(ast/12, 1) },
+    { label:"STL", pct:Math.min(stl/2.5, 1) },
+    { label:"BLK", pct:Math.min(blk/3, 1) },
+    { label:"FG%", pct:Math.min(fg/65, 1) },
+  ];
+
+  return (
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:14,
+      animation:"fadeIn 0.3s ease-out", marginTop:8 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:C.text,
+            letterSpacing:"1px" }}>{stats.name}</div>
+          <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:12, color:C.accent }}>
+            {stats.team} · {stats.position} · {stats.games} GP
+          </div>
+        </div>
+        <button onClick={() => setExpanded(!expanded)}
+          style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:6,
+            padding:"4px 10px", color:C.muted, fontSize:11, cursor:"pointer",
+            fontFamily:"'Barlow Condensed',sans-serif", minHeight:32 }}>
+          {expanded ? "LESS" : "CHARTS"}
+        </button>
+      </div>
+
+      {/* Always show: key stats bar */}
+      <BarChart data={barData} height={100} />
+
+      {expanded && (
+        <div style={{ marginTop:14 }}>
+          {/* Radar chart */}
+          <div style={{ marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
+              letterSpacing:"0.5px", marginBottom:6, textAlign:"center" }}>PERFORMANCE PROFILE</div>
+            <RadarChart data={radarData} size={180} />
+          </div>
+
+          {/* Shot breakdown */}
+          <div style={{ marginBottom:8 }}>
+            <div style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
+              letterSpacing:"0.5px", marginBottom:6, textAlign:"center" }}>SHOOTING SPLITS</div>
+            <ShotBreakdownChart fg={fg} fg3={fg3} ft={ft} size={160} />
+          </div>
+
+          {/* Shooting bars */}
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:6, marginTop:10 }}>
+            <MiniGauge value={fg} max={65} label="FG%" color={C.accent} />
+            <MiniGauge value={fg3} max={50} label="3P%" color={C.green} />
+            <MiniGauge value={ft} max={100} label="FT%" color={C.blue} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeamChartCard({ stats }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!stats) return null;
+
+  const offRtg = parseFloat(stats.offRtg) || 0;
+  const defRtg = parseFloat(stats.defRtg) || 0;
+  const netRtg = parseFloat(stats.netRtg) || 0;
+  const pace = parseFloat(stats.pace) || 0;
+  const ppg = parseFloat(stats.ppg) || 0;
+  const oppPpg = parseFloat(stats.oppPpg) || 0;
+  const fgPct = parseFloat(stats.fgPct) || 0;
+  const fg3Pct = parseFloat(stats.fg3Pct) || 0;
+
+  const barData = [
+    { label:"PPG", value:ppg, color:C.accent },
+    { label:"OPP", value:oppPpg, color:C.red },
+    { label:"FG%", value:fgPct, color:C.blue },
+    { label:"3P%", value:fg3Pct, color:C.green },
+    { label:"PACE", value:pace, color:"#FF9800" },
+  ];
+
+  const radarData = [
+    { label:"OFF", pct:Math.min(offRtg/125, 1) },
+    { label:"DEF", pct:Math.min((130 - defRtg)/25, 1) },
+    { label:"PPG", pct:Math.min(ppg/125, 1) },
+    { label:"FG%", pct:Math.min(fgPct/55, 1) },
+    { label:"3P%", pct:Math.min(fg3Pct/42, 1) },
+    { label:"PACE", pct:Math.min(pace/105, 1) },
+  ];
+
+  const netColor = netRtg > 0 ? C.green : netRtg < -2 ? C.red : C.accent;
+
+  return (
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:14,
+      animation:"fadeIn 0.3s ease-out", marginTop:8 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
+        <div>
+          <div style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:20, color:C.text,
+            letterSpacing:"1px" }}>{stats.name}</div>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <span style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:13, color:C.accent,
+              fontWeight:600 }}>{stats.record}</span>
+            <span style={{ fontFamily:"'JetBrains Mono',monospace", fontSize:11, color:netColor,
+              background:"rgba(255,255,255,0.04)", padding:"1px 5px", borderRadius:3 }}>
+              NET {netRtg > 0 ? "+" : ""}{stats.netRtg}
+            </span>
+          </div>
+        </div>
+        <button onClick={() => setExpanded(!expanded)}
+          style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:6,
+            padding:"4px 10px", color:C.muted, fontSize:11, cursor:"pointer",
+            fontFamily:"'Barlow Condensed',sans-serif", minHeight:32 }}>
+          {expanded ? "LESS" : "CHARTS"}
+        </button>
+      </div>
+
+      {/* Rating gauges — always visible */}
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:4, marginBottom:8 }}>
+        <MiniGauge value={offRtg} max={125} label="OFF RTG" color={C.accent} />
+        <MiniGauge value={defRtg} max={125} label="DEF RTG" color={defRtg < 112 ? C.green : C.red} />
+        <MiniGauge value={ppg} max={125} label="PPG" color={C.blue} />
+        <MiniGauge value={pace} max={105} label="PACE" color="#FF9800" />
+      </div>
+
+      {expanded && (
+        <div style={{ marginTop:10 }}>
+          <div style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
+            letterSpacing:"0.5px", marginBottom:6, textAlign:"center" }}>KEY METRICS</div>
+          <BarChart data={barData} height={110} />
+
+          <div style={{ marginTop:14 }}>
+            <div style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
+              letterSpacing:"0.5px", marginBottom:6, textAlign:"center" }}>TEAM PROFILE</div>
+            <RadarChart data={radarData} size={180} />
+          </div>
+
+          {/* Shooting splits */}
+          <div style={{ marginTop:10 }}>
+            <div style={{ fontSize:11, color:C.muted, fontFamily:"'Barlow Condensed',sans-serif",
+              letterSpacing:"0.5px", marginBottom:6, textAlign:"center" }}>SHOOTING</div>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+              <MiniGauge value={fgPct} max={55} label="FG%" color={C.accent} />
+              <MiniGauge value={fg3Pct} max={42} label="3P%" color={C.green} />
+            </div>
+          </div>
+
+          {/* Situational */}
+          <div style={{ marginTop:10, padding:"6px 8px", background:"rgba(245,166,35,0.04)",
+            border:`1px solid rgba(245,166,35,0.1)`, borderRadius:5 }}>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11,
+              fontFamily:"'Barlow Condensed',sans-serif", color:C.muted }}>
+              <span>Home: {stats.homeRecord}</span>
+              <span>Away: {stats.awayRecord}</span>
+              <span>L10: {stats.last10}</span>
+              <span>Streak: {stats.streak}</span>
+              <span>vs .500+: {stats.vsAbove500}</span>
+              <span>O/U: {stats.ouRecord}</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComparisonChartView({ t1, t2, type = "team" }) {
+  if (!t1 || !t2) return null;
+
+  const metrics = type === "team" ? [
+    { label:"OFF RTG", v1:t1.offRtg, v2:t2.offRtg, max:125, higher:true },
+    { label:"DEF RTG", v1:t1.defRtg, v2:t2.defRtg, max:125, higher:false },
+    { label:"PPG", v1:t1.ppg, v2:t2.ppg, max:125, higher:true },
+    { label:"FG%", v1:t1.fgPct, v2:t2.fgPct, max:55, higher:true },
+    { label:"3P%", v1:t1.fg3Pct, v2:t2.fg3Pct, max:42, higher:true },
+    { label:"PACE", v1:t1.pace, v2:t2.pace, max:105, higher:true },
+  ] : [
+    { label:"PTS", v1:parseFloat(t1.pts), v2:parseFloat(t2.pts), max:35, higher:true },
+    { label:"REB", v1:parseFloat(t1.reb), v2:parseFloat(t2.reb), max:15, higher:true },
+    { label:"AST", v1:parseFloat(t1.ast), v2:parseFloat(t2.ast), max:12, higher:true },
+    { label:"FG%", v1:parseFloat(t1.fg), v2:parseFloat(t2.fg), max:65, higher:true },
+    { label:"3P%", v1:parseFloat(t1.fg3), v2:parseFloat(t2.fg3), max:50, higher:true },
+  ];
+
+  const w = 280, barH = 18, gap = 6, h = metrics.length * (barH + gap) + 30;
+  const mid = w / 2;
+
+  return (
+    <div style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:14,
+      animation:"fadeIn 0.3s ease-out", marginTop:8 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, color:C.accent }}>
+          {t1.abbr || t1.name?.split(" ").pop()}
+        </span>
+        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:12, color:C.dim }}>VS</span>
+        <span style={{ fontFamily:"'Bebas Neue',sans-serif", fontSize:16, color:C.blue }}>
+          {t2.abbr || t2.name?.split(" ").pop()}
+        </span>
+      </div>
+
+      <div style={{ overflowX:"auto" }}>
+        <svg width={w} height={h} style={{ display:"block", margin:"0 auto" }}>
+          <line x1={mid} y1={0} x2={mid} y2={h} stroke={C.border} strokeWidth={1} opacity={0.3} />
+          {metrics.map((m, i) => {
+            const y = i * (barH + gap) + 15;
+            const maxBarW = mid - 40;
+            const w1 = (m.v1 / m.max) * maxBarW;
+            const w2 = (m.v2 / m.max) * maxBarW;
+            const diff = m.v1 - m.v2;
+            const winner = Math.abs(diff) < 0.5 ? 0 : m.higher ? (diff > 0 ? 1 : 2) : (diff < 0 ? 1 : 2);
+            return (
+              <g key={m.label}>
+                {/* Left bar (t1) */}
+                <rect x={mid - w1 - 2} y={y} width={w1} height={barH} rx={3}
+                  fill={winner === 1 ? C.accent : C.border} opacity={winner === 1 ? 0.8 : 0.4} />
+                <text x={mid - w1 - 8} y={y + barH/2 + 1} textAnchor="end" dominantBaseline="middle"
+                  fill={winner === 1 ? C.accent : C.muted} fontSize={10}
+                  fontFamily="'JetBrains Mono',monospace" fontWeight={600}>{m.v1}</text>
+                {/* Right bar (t2) */}
+                <rect x={mid + 2} y={y} width={w2} height={barH} rx={3}
+                  fill={winner === 2 ? C.blue : C.border} opacity={winner === 2 ? 0.8 : 0.4} />
+                <text x={mid + w2 + 8} y={y + barH/2 + 1} textAnchor="start" dominantBaseline="middle"
+                  fill={winner === 2 ? C.blue : C.muted} fontSize={10}
+                  fontFamily="'JetBrains Mono',monospace" fontWeight={600}>{m.v2}</text>
+                {/* Label */}
+                <text x={mid} y={y + barH + gap - 1} textAnchor="middle"
+                  fill={C.dim} fontSize={8} fontFamily="'Barlow Condensed',sans-serif">{m.label}</text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function ParlayPanel({ selections, result, onRemove }) {
   return (
     <div style={{ padding:"0 2px" }}>
@@ -2075,8 +2469,13 @@ export default function NBAAnalyticsApp() {
                   <div style={{ background:"rgba(255,68,68,0.08)", border:`1px solid rgba(255,68,68,0.2)`,
                     borderRadius:6, padding:10, fontSize:13, color:"#FF8080", marginBottom:8 }}>{teamError}</div>
                 )}
-                {teamData && <TeamStatsCard stats={teamData} />}
-                {comparisonData && <ComparisonView t1={comparisonData.t1} t2={comparisonData.t2} />}
+                {teamData && <TeamChartCard stats={teamData} />}
+                {comparisonData && (
+                  <>
+                    <ComparisonView t1={comparisonData.t1} t2={comparisonData.t2} />
+                    <ComparisonChartView t1={comparisonData.t1} t2={comparisonData.t2} type="team" />
+                  </>
+                )}
                 {!teamData && !comparisonData && !teamError && (
                   <div style={{ padding:"12px 0" }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:8,
@@ -2120,7 +2519,7 @@ export default function NBAAnalyticsApp() {
                   <div style={{ background:"rgba(255,68,68,0.08)", border:`1px solid rgba(255,68,68,0.2)`,
                     borderRadius:6, padding:10, fontSize:13, color:"#FF8080" }}>{playerError}</div>
                 )}
-                {playerData && <PlayerCard stats={playerData} />}
+                {playerData && <PlayerChartCard stats={playerData} />}
                 {!playerData && !playerLoading && !playerError && (
                   <div style={{ padding:"20px 0" }}>
                     <div style={{ fontSize:12, color:C.muted, marginBottom:10,
