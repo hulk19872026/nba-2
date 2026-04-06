@@ -232,6 +232,53 @@ const DataAgent = {
     };
   },
 
+  // Stat synonym dictionary
+  statSynonyms: {
+    pts:  ["points","ppg","scoring","scorer","score","pts"],
+    fg3:  ["3 point","three point","3pt","3-point","threes","3s","triples","three","from deep","beyond the arc","long range"],
+    fg:   ["field goal","fg%","shooting","fg pct","field goal pct","2 point","two point","mid range"],
+    reb:  ["rebound","boards","rebounding","rpg","reb"],
+    ast:  ["assist","dime","passing","apg","ast","playmaking"],
+    stl:  ["steal","steals","spg","stl","swipe"],
+    blk:  ["block","blocks","bpg","blk","shot block","rim protect"],
+    ft:   ["free throw","ft%","free throw pct","from the line","foul shot"],
+  },
+
+  resolveStatKey(query) {
+    const q = query.toLowerCase();
+    for (const [key, syns] of Object.entries(this.statSynonyms)) {
+      for (const syn of syns) {
+        if (q.includes(syn)) return key;
+      }
+    }
+    return null;
+  },
+
+  getTeamRoster(teamQuery) {
+    const team = this.findTeam(teamQuery);
+    if (!team) return null;
+    const roster = Object.entries(this.players)
+      .filter(([, p]) => p.team === team.name)
+      .map(([name, data]) => ({ name, ...data }));
+    return { team, roster };
+  },
+
+  getTeamStatLeader(teamQuery, statKey) {
+    const result = this.getTeamRoster(teamQuery);
+    if (!result || result.roster.length === 0) return null;
+    const { team, roster } = result;
+    const key = statKey || "pts";
+    const sorted = [...roster].sort((a, b) => (b[key] || 0) - (a[key] || 0));
+    const statLabels = { pts:"PPG", fg3:"3P%", fg:"FG%", reb:"RPG", ast:"APG", stl:"SPG", blk:"BPG", ft:"FT%" };
+    const label = statLabels[key] || key.toUpperCase();
+    return {
+      team: team.name, abbr: team.abbr, stat: key, statLabel: label,
+      leader: sorted[0],
+      top3: sorted.slice(0, 3),
+      allPlayers: sorted,
+    };
+  },
+
   compareTeams(q1, q2) {
     const t1 = this.getTeamStats(q1);
     const t2 = this.getTeamStats(q2);
@@ -488,6 +535,17 @@ const QueryUnderstandingAgent = {
       keywords: ["stats", "ppg", "rpg", "apg", "shooting", "averages", "player", "scoring"],
       baseConfidence: 0.85,
     },
+    team_stat_leader: {
+      patterns: [
+        /who\s+(?:has|had|got|leads?|shot|scored?|made|makes?|gets?)\s+(?:the\s+)?(?:most|best|highest|top)\s+.+?\s+(?:on|for|from)\s+(?:the\s+)?\w+/i,
+        /(?:best|top|leading|most)\s+(?:\w+\s+)?(?:shooter|scorer|rebounder|passer|blocker|defender)\s+(?:on|for|from)\s+(?:the\s+)?\w+/i,
+        /(?:leader|leading)\s+(?:in\s+)?.+?\s+(?:on|for|from)\s+(?:the\s+)?\w+/i,
+        /who\s+(?:leads?|is\s+the\s+best)\s+(?:the\s+)?\w+\s+in/i,
+        /\w+\s+(?:leader|leaders)\s+(?:on|for)\s+/i,
+      ],
+      keywords: ["most", "leader", "leading", "best shooter", "top scorer", "who leads", "who has the most", "on the"],
+      baseConfidence: 0.9,
+    },
     team_stats: {
       patterns: [
         /(?:team\s+)?stats?\s+(?:for\s+)?(\w+)/i,
@@ -648,6 +706,15 @@ const QueryUnderstandingAgent = {
       if (confidence > 0) {
         results.push({ intent, confidence, config });
       }
+    }
+
+    // Team-context boosting: "on the [team]" or "for the [team]" + stat keywords
+    const hasTeamContext = /(?:on|for|from)\s+(?:the\s+)?\w+/i.test(q) && this.detectTeams(q).length > 0;
+    const hasStatWord = DataAgent.resolveStatKey(q) !== null;
+    if (hasTeamContext && hasStatWord) {
+      const tsl = results.find(r => r.intent === "team_stat_leader");
+      if (tsl) tsl.confidence = Math.max(tsl.confidence, 0.92);
+      else results.push({ intent: "team_stat_leader", confidence: 0.92, config: this.intentPatterns.team_stat_leader });
     }
 
     // Sort by confidence descending
@@ -970,29 +1037,57 @@ ${allTrends.length > 0 ? `\n**Active Trends:**\n${allTrends.slice(0, 6).map(t =>
       return `Could not find one or both teams. Try full city name or abbreviation (e.g. "compare LAL vs BOS").`;
     }
 
+    // Team stat leader query — "who shot the most 3s on the knicks", "best scorer on lakers"
+    {
+      const hasTeamContext = /(?:on|for|from)\s+(?:the\s+)?(\w+)/i.test(q) || /(?:the\s+)?(\w+)\s+(?:leader|leading)/i.test(q);
+      const statKey = DataAgent.resolveStatKey(q);
+      if (hasTeamContext && (statKey || /who\s+(?:has|had|got|leads?|shot|scored?|made|makes?|gets?)\s+(?:the\s+)?(?:most|best|highest)/i.test(q) || /(?:best|top|leading)\s+(?:\w+\s+)?(?:shooter|scorer|rebounder|passer|blocker)/i.test(q))) {
+        // Extract team name from query
+        const teams = QueryUnderstandingAgent.detectTeams(q);
+        if (teams.length > 0) {
+          const effectiveStatKey = statKey || "pts";
+          const result = DataAgent.getTeamStatLeader(teams[0].abbr, effectiveStatKey);
+          if (result && result.top3.length > 0) {
+            const leader = result.leader;
+            const isPercent = ["fg", "fg3", "ft"].includes(effectiveStatKey);
+            const formatVal = (v) => isPercent ? `${v}%` : v;
+            const runners = result.top3.slice(1).map((p, i) =>
+              `${i === 0 ? "🥈" : "🥉"} **${p.name}** — ${formatVal(p[effectiveStatKey])} ${result.statLabel}`
+            ).join("\n");
+            return `📊 **${result.team} — ${result.statLabel} Leaders:**\n\n🥇 **${leader.name}** — ${formatVal(leader[effectiveStatKey])} ${result.statLabel} (${leader.gp} GP)\n    ${leader.pts} PPG | ${leader.reb} RPG | ${leader.ast} APG\n${runners ? `\n${runners}` : ""}`;
+          }
+          // If we found a team but no roster data → web search
+          return null; // Signal to sendMessage that we need web search
+        }
+      }
+    }
+
     // Team stats query — "team stats for Nuggets"
     const teamStatsMatch = q.match(/(?:team\s+)?stats?\s+(?:for\s+)?(\w+)/i)
       || q.match(/(\w+)\s+team\s+stats?/i);
     if (teamStatsMatch && !q.match(/player|about\s+[A-Z]/i)) {
-      // Check if it's a team, not a player
       const teamData = DataAgent.getTeamStats(teamStatsMatch[1]);
       if (teamData) return this.formatTeamStats(teamData);
     }
 
-    // Player stats query
-    const playerMatch = userMsg.match(/(?:player\s+)?(?:stats?|about|points?|scoring|how is|how's|tell me about)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z\-]+)+)/i)
-      || userMsg.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z\-]+)+)\s+stats?/i);
+    // Player stats query — only match actual player names (2+ capitalized words), NOT "on the knicks"
+    const playerMatch = userMsg.match(/(?:player\s+)?(?:stats?|about|points?|scoring|how is|how's|tell me about)\s+([A-Z][a-z]+\s+[A-Z][a-z\-]+)/i)
+      || userMsg.match(/([A-Z][a-z]+\s+[A-Z][a-z\-]+)\s+stats?/i);
     if (playerMatch) {
-      const pData = DataAgent.getPlayerStats(playerMatch[1]);
-      if (pData) {
-        return `📊 ${pData.name} — ${pData.team} (${pData.position})
+      // Skip if the "player name" is actually a team context phrase
+      const candidate = playerMatch[1];
+      if (!/^(?:on|for|from|the)\s/i.test(candidate) && !DataAgent.findTeam(candidate.split(/\s+/)[1])) {
+        const pData = DataAgent.getPlayerStats(candidate);
+        if (pData) {
+          return `📊 ${pData.name} — ${pData.team} (${pData.position})
 2024-25 Season Stats (${pData.games} games, ${pData.minutes} MPG):
 
 🏀 ${pData.pts} PPG | ${pData.reb} RPG | ${pData.ast} APG
 🎯 FG: ${pData.fg} | 3P: ${pData.fg3} | FT: ${pData.ft}
 🛡️ ${pData.stl} SPG | ${pData.blk} BPG`;
+        }
+        // Don't return "player not found" immediately — try team-based interpretation first
       }
-      return `Player "${playerMatch[1]}" not found in our database. Try a top NBA player name (e.g. LeBron James, Stephen Curry, Shai Gilgeous-Alexander).`;
     }
 
     // Team trends query — "trends for Celtics" or "best team trends tonight"
@@ -1779,15 +1874,17 @@ export default function NBAAnalyticsApp() {
     try {
       // Step 1: QueryUnderstandingAgent classifies the query
       const classification = QueryUnderstandingAgent.classify(q);
-      const needsSearch = QueryUnderstandingAgent.needsWebSearch(classification);
+      let needsSearch = QueryUnderstandingAgent.needsWebSearch(classification);
 
       // Step 2: Try local InterfaceAgent first (if confidence is decent)
       let localReply = null;
       if (classification.confidence >= 0.4) {
         localReply = InterfaceAgent.query(q, games,
           { selections: parlaySelections, result: parlayResult });
-        // Check if the local engine actually answered (vs returning help text)
-        if (localReply.startsWith("I can help with:")) localReply = null;
+        // null = agent says "I need web search for this"
+        // help text = no handler matched
+        if (localReply === null) needsSearch = true;
+        else if (localReply.startsWith("I can help with:")) localReply = null;
       }
 
       // Step 3: If local answered confidently, use it
